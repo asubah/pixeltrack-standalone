@@ -74,8 +74,9 @@ namespace pixelgpudetails {
     return detId;
   }
 
-  //reference http://cmsdoxygen.web.cern.ch/cmsdoxygen/CMSSW_9_2_0/doc/html/dd/d31/FrameConversion_8cc_source.html
-  //http://cmslxr.fnal.gov/source/CondFormats/SiPixelObjects/src/PixelROC.cc?v=CMSSW_9_2_0#0071
+  // reference
+  // http://cmsdoxygen.web.cern.ch/cmsdoxygen/CMSSW_9_2_0/doc/html/dd/d31/FrameConversion_8cc_source.html
+  // http://cmslxr.fnal.gov/source/CondFormats/SiPixelObjects/src/PixelROC.cc?v=CMSSW_9_2_0#0071
   // Convert local pixel to pixelgpudetails::global pixel
   __device__ pixelgpudetails::Pixel frameConversion(
       bool bpix, int side, uint32_t layer, uint32_t rocIdInDetUnit, pixelgpudetails::Pixel local) {
@@ -83,7 +84,8 @@ namespace pixelgpudetails {
     int rowOffset = 0, colOffset = 0;
 
     if (bpix) {
-      if (side == -1 && layer != 1) {  // -Z side: 4 non-flipped modules oriented like 'dddd', except Layer 1
+      if (side == -1 && layer != 1) {  // -Z side: 4 non-flipped modules oriented
+                                       // like 'dddd', except Layer 1
         if (rocIdInDetUnit < 8) {
           slopeRow = 1;
           slopeCol = -1;
@@ -95,7 +97,8 @@ namespace pixelgpudetails {
           rowOffset = 2 * pixelgpudetails::numRowsInRoc - 1;
           colOffset = (rocIdInDetUnit - 8) * pixelgpudetails::numColsInRoc;
         }       // if roc
-      } else {  // +Z side: 4 non-flipped modules oriented like 'pppp', but all 8 in layer1
+      } else {  // +Z side: 4 non-flipped modules oriented like 'pppp', but all 8
+                // in layer1
         if (rocIdInDetUnit < 8) {
           slopeRow = -1;
           slopeCol = 1;
@@ -140,7 +143,7 @@ namespace pixelgpudetails {
 
     uint32_t gRow = rowOffset + slopeRow * local.row;
     uint32_t gCol = colOffset + slopeCol * local.col;
-    //printf("Inside frameConversion row: %u, column: %u\n", gRow, gCol);
+    // printf("Inside frameConversion row: %u, column: %u\n", gRow, gCol);
     pixelgpudetails::Pixel global = {gRow, gCol};
     return global;
   }
@@ -282,9 +285,9 @@ namespace pixelgpudetails {
       case 31:
       case 36:
       case 40: {
-        //set dummy values for cabling just to get detId from link
-        //cabling.dcol = 0;
-        //cabling.pxid = 2;
+        // set dummy values for cabling just to get detId from link
+        // cabling.dcol = 0;
+        // cabling.pxid = 2;
         uint32_t roc = 1;
         uint32_t link = (errWord >> pixelgpudetails::LINK_shift) & pixelgpudetails::LINK_mask;
         uint32_t rID_temp = getRawId(cablingMap, fedId, link, roc).RawId;
@@ -319,8 +322,8 @@ namespace pixelgpudetails {
           break;  // signifies unexpected result
 
         // set dummy values for cabling just to get detId from link if in Barrel
-        //cabling.dcol = 0;
-        //cabling.pxid = 2;
+        // cabling.dcol = 0;
+        // cabling.pxid = 2;
         uint32_t roc = 1;
         uint32_t link = chanNmbr;
         uint32_t rID_temp = getRawId(cablingMap, fedId, link, roc).RawId;
@@ -330,8 +333,8 @@ namespace pixelgpudetails {
       }
       case 37:
       case 38: {
-        //cabling.dcol = 0;
-        //cabling.pxid = 2;
+        // cabling.dcol = 0;
+        // cabling.pxid = 2;
         uint32_t roc = (errWord >> pixelgpudetails::ROC_shift) & pixelgpudetails::ROC_mask;
         uint32_t link = (errWord >> pixelgpudetails::LINK_shift) & pixelgpudetails::LINK_mask;
         uint32_t rID_temp = getRawId(cablingMap, fedId, link, roc).RawId;
@@ -362,7 +365,8 @@ namespace pixelgpudetails {
                                    bool useQualityInfo,
                                    bool includeErrors,
                                    bool debug) {
-    //if (threadIdx.x==0) printf("Event: %u blockIdx.x: %u start: %u end: %u\n", eventno, blockIdx.x, begin, end);
+    // if (threadIdx.x==0) printf("Event: %u blockIdx.x: %u start: %u end: %u\n",
+    // eventno, blockIdx.x, begin, end);
 
     int32_t first = threadIdx.x + blockIdx.x * blockDim.x;
     for (int32_t iloop = first, nend = wordCounter; iloop < nend; iloop += blockDim.x * gridDim.x) {
@@ -381,7 +385,8 @@ namespace pixelgpudetails {
 
       uint32_t ww = word[gIndex];  // Array containing 32 bit raw data
       if (ww == 0) {
-        // 0 is an indicator of a noise/dead channel, skip these pixels during clusterization
+        // 0 is an indicator of a noise/dead channel, skip these pixels during
+        // clusterization
         continue;
       }
 
@@ -412,7 +417,7 @@ namespace pixelgpudetails {
         continue;
 
       uint32_t layer = 0;                   //, ladder =0;
-      int side = 0, panel = 0, module = 0;  //disk = 0, blade = 0
+      int side = 0, panel = 0, module = 0;  // disk = 0, blade = 0
 
       if (barrel) {
         layer = (rawId >> pixelgpudetails::layerStartBit) & pixelgpudetails::layerMask;
@@ -422,9 +427,9 @@ namespace pixelgpudetails {
         // endcap ids
         layer = 0;
         panel = (rawId >> pixelgpudetails::panelStartBit) & pixelgpudetails::panelMask;
-        //disk  = (rawId >> diskStartBit_) & diskMask_;
+        // disk  = (rawId >> diskStartBit_) & diskMask_;
         side = (panel == 1) ? -1 : 1;
-        //blade = (rawId >> bladeStartBit_) & bladeMask_;
+        // blade = (rawId >> bladeStartBit_) & bladeMask_;
       }
 
       // ***special case of layer to 1 be handled here
@@ -436,7 +441,7 @@ namespace pixelgpudetails {
         localPix.col = col;
         if (includeErrors) {
           if (not rocRowColIsValid(row, col)) {
-            uint8_t error = conversionError(fedId, 3, debug);  //use the device function and fill the arrays
+            uint8_t error = conversionError(fedId, 3, debug);  // use the device function and fill the arrays
             err->push_back(PixelErrorCompact{rawId, ww, error, fedId});
             if (debug)
               printf("BPIX1  Error status: %i\n", error);
@@ -547,11 +552,22 @@ namespace pixelgpudetails {
 
     if (wordCounter)  // protect in case of empty event....
     {
-      const int threadsPerBlock = 512;
+      int threadsPerBlock = 512;
+      int minGridSize = 0;
+
+      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &threadsPerBlock, RawToDigi_kernel, 0, 0);
+
       const int blocks = (wordCounter + threadsPerBlock - 1) / threadsPerBlock;  // fill it all
 
+      // if (blocks < minGridSize) {
+      //   threadsPerBlock = (wordCounter + threadsPerBlock -1) / minGridSize;
+      //   threadsPerBlock = ((threadsPerBlock + 32) / 32) * 32;
+      //   blocks = minGridSize;
+      // }
+
       assert(0 == wordCounter % 2);
-      // wordCounter is the total no of words in each event to be trasfered on device
+      // wordCounter is the total no of words in each event to be trasfered on
+      // device
       auto word_d = cms::cuda::make_device_unique<uint32_t[]>(wordCounter, stream);
       auto fedId_d = cms::cuda::make_device_unique<uint8_t[]>(wordCounter, stream);
 
@@ -592,7 +608,9 @@ namespace pixelgpudetails {
     {
       // clusterizer ...
       using namespace gpuClustering;
+      int minGridSize = 0;
       int threadsPerBlock = 256;
+      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &threadsPerBlock, gpuCalibPixel::calibDigis, 0, 0);
       int blocks =
           (std::max(int(wordCounter), int(gpuClustering::MaxNumModules)) + threadsPerBlock - 1) / threadsPerBlock;
 
