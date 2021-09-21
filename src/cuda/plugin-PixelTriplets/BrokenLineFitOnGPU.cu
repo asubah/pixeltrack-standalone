@@ -1,5 +1,6 @@
 #include "BrokenLineFitOnGPU.h"
 #include "CUDACore/device_unique_ptr.h"
+#include "CUDACore/ExecutionConfiguration.h"
 
 void HelixFitOnGPU::launchBrokenLineKernels(HitsView const *hv,
                                             uint32_t hitsInFit,
@@ -20,10 +21,14 @@ void HelixFitOnGPU::launchBrokenLineKernels(HitsView const *hv,
 
   for (uint32_t offset = 0; offset < maxNumberOfTuples; offset += maxNumberOfConcurrentFits_) {
     // fit triplets
+    cms::cuda::ExecutionConfiguration(kernelBLFastFit<3>, &blockSize);
+    numberOfBlocks = (maxNumberOfConcurrentFits_ + blockSize - 1) / blockSize;
     kernelBLFastFit<3><<<numberOfBlocks, blockSize, 0, stream>>>(
         tuples_d, tupleMultiplicity_d, hv, hitsGPU_.get(), hits_geGPU_.get(), fast_fit_resultsGPU_.get(), 3, offset);
     cudaCheck(cudaGetLastError());
 
+    cms::cuda::ExecutionConfiguration(kernelBLFit<3>, &blockSize);
+    numberOfBlocks = (maxNumberOfConcurrentFits_ + blockSize - 1) / blockSize;
     kernelBLFit<3><<<numberOfBlocks, blockSize, 0, stream>>>(tupleMultiplicity_d,
                                                              bField_,
                                                              outputSoa_d,
@@ -35,6 +40,8 @@ void HelixFitOnGPU::launchBrokenLineKernels(HitsView const *hv,
     cudaCheck(cudaGetLastError());
 
     // fit quads
+    cms::cuda::ExecutionConfiguration(kernelBLFit<4>, &blockSize);
+    numberOfBlocks = (maxNumberOfConcurrentFits_ + blockSize - 1) / blockSize;
     kernelBLFastFit<4><<<numberOfBlocks / 4, blockSize, 0, stream>>>(
         tuples_d, tupleMultiplicity_d, hv, hitsGPU_.get(), hits_geGPU_.get(), fast_fit_resultsGPU_.get(), 4, offset);
     cudaCheck(cudaGetLastError());
@@ -51,10 +58,14 @@ void HelixFitOnGPU::launchBrokenLineKernels(HitsView const *hv,
 
     if (fit5as4_) {
       // fit penta (only first 4)
+      cms::cuda::ExecutionConfiguration(kernelBLFastFit<4>, &blockSize);
+      numberOfBlocks = (maxNumberOfConcurrentFits_ + blockSize - 1) / blockSize;
       kernelBLFastFit<4><<<numberOfBlocks / 4, blockSize, 0, stream>>>(
           tuples_d, tupleMultiplicity_d, hv, hitsGPU_.get(), hits_geGPU_.get(), fast_fit_resultsGPU_.get(), 5, offset);
       cudaCheck(cudaGetLastError());
 
+      cms::cuda::ExecutionConfiguration(kernelBLFit<4>, &blockSize);
+      numberOfBlocks = (maxNumberOfConcurrentFits_ + blockSize - 1) / blockSize;
       kernelBLFit<4><<<numberOfBlocks / 4, blockSize, 0, stream>>>(tupleMultiplicity_d,
                                                                    bField_,
                                                                    outputSoa_d,
@@ -66,10 +77,14 @@ void HelixFitOnGPU::launchBrokenLineKernels(HitsView const *hv,
       cudaCheck(cudaGetLastError());
     } else {
       // fit penta (all 5)
+      cms::cuda::ExecutionConfiguration(kernelBLFastFit<5>, &blockSize);
+      numberOfBlocks = (maxNumberOfConcurrentFits_ + blockSize - 1) / blockSize;
       kernelBLFastFit<5><<<numberOfBlocks / 4, blockSize, 0, stream>>>(
           tuples_d, tupleMultiplicity_d, hv, hitsGPU_.get(), hits_geGPU_.get(), fast_fit_resultsGPU_.get(), 5, offset);
       cudaCheck(cudaGetLastError());
 
+      cms::cuda::ExecutionConfiguration(kernelBLFit<5>, &blockSize);
+      numberOfBlocks = (maxNumberOfConcurrentFits_ + blockSize - 1) / blockSize;
       kernelBLFit<5><<<numberOfBlocks / 4, blockSize, 0, stream>>>(tupleMultiplicity_d,
                                                                    bField_,
                                                                    outputSoa_d,

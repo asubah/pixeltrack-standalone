@@ -14,6 +14,7 @@
 #include "CUDACore/cuda_assert.h"
 #include "CUDACore/cudastdAlgorithm.h"
 #include "CUDACore/prefixScan.h"
+// #include "CUDACore/ExecutionConfiguration.h"
 
 namespace cms {
   namespace cuda {
@@ -77,7 +78,10 @@ namespace cms {
 #ifdef __CUDACC__
       uint32_t *poff = (uint32_t *)((char *)(h) + offsetof(Histo, off));
       int32_t *ppsws = (int32_t *)((char *)(h) + offsetof(Histo, psws));
-      auto nthreads = 1024;
+      int nthreads = 1024;
+      // int minGrid;
+      // cms::cuda::ExecutionConfiguration(multiBlockPrefixScan, &nthreads); 
+      // cudaOccupancyMaxPotentialBlockSize(&minGrid, &nthreads, multiBlockPrefixScan, 0, 0);
       auto nblocks = (Histo::totbins() + nthreads - 1) / nthreads;
       multiBlockPrefixScan<<<nblocks, nthreads, sizeof(int32_t) * nblocks, stream>>>(
           poff, poff, Histo::totbins(), ppsws);
@@ -101,10 +105,16 @@ namespace cms {
     ) {
       launchZero(h, stream);
 #ifdef __CUDACC__
+      // cms::cuda::ExecutionConfiguration(countFromVector, &nthreads); 
+      // int minGrid;
+      //cudaOccupancyMaxPotentialBlockSize(&minGrid, &nthreads, countFromVector, 0, 0);
       auto nblocks = (totSize + nthreads - 1) / nthreads;
       countFromVector<<<nblocks, nthreads, 0, stream>>>(h, nh, v, offsets);
       cudaCheck(cudaGetLastError());
       launchFinalize(h, stream);
+      // cms::cuda::ExecutionConfiguration(fillFromVector, &nthreads); 
+      // cudaOccupancyMaxPotentialBlockSize(&minGrid, &nthreads, fillFromVector, 0, 0);
+      nblocks = (totSize + nthreads - 1) / nthreads;
       fillFromVector<<<nblocks, nthreads, 0, stream>>>(h, nh, v, offsets);
       cudaCheck(cudaGetLastError());
 #else

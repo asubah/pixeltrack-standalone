@@ -1,4 +1,5 @@
 #include "CUDACore/cudaCheck.h"
+#include "CUDACore/ExecutionConfiguration.h"
 
 #include "gpuClusterTracksByDensity.h"
 #include "gpuClusterTracksDBSCAN.h"
@@ -105,6 +106,7 @@ namespace gpuVertexFinder {
 #ifdef __CUDACC__
     init<<<1, 1, 0, stream>>>(soa, ws_d.get());
     auto blockSize = 128;
+    cms::cuda::ExecutionConfiguration(loadTracks, &blockSize);
     auto numberOfBlocks = (TkSoA::stride() + blockSize - 1) / blockSize;
     loadTracks<<<numberOfBlocks, blockSize, 0, stream>>>(tksoa, soa, ws_d.get(), ptMin);
     cudaCheck(cudaGetLastError());
