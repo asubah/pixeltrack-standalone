@@ -16,6 +16,7 @@ namespace cms {
         // Use cuda occupencey API
         
         cudaOccupancyMaxPotentialBlockSize(minimum_blocks, threads, kernel, 0, 0);
+        printf("threads = %d\n", (*threads));
                 
         // if (blocks < minimum_blocks) {
         //   threads = (wordCounter + threads -1) / minimum_blocks;
