@@ -26,6 +26,7 @@
 #include "CUDACore/cudaCheck.h"
 #include "CUDACore/device_unique_ptr.h"
 #include "CUDACore/host_unique_ptr.h"
+#include "CUDACore/ExecutionConfiguration.h"
 #include "CondFormats/SiPixelFedCablingMapGPU.h"
 
 // local includes
@@ -553,17 +554,10 @@ namespace pixelgpudetails {
     if (wordCounter)  // protect in case of empty event....
     {
       int threadsPerBlock = 512;
-      int minGridSize = 0;
 
-      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &threadsPerBlock, RawToDigi_kernel, 0, 0);
+      cms::cuda::ExecutionConfiguration(RawToDigi_kernel, &threadsPerBlock);
 
       const int blocks = (wordCounter + threadsPerBlock - 1) / threadsPerBlock;  // fill it all
-
-      // if (blocks < minGridSize) {
-      //   threadsPerBlock = (wordCounter + threadsPerBlock -1) / minGridSize;
-      //   threadsPerBlock = ((threadsPerBlock + 32) / 32) * 32;
-      //   blocks = minGridSize;
-      // }
 
       assert(0 == wordCounter % 2);
       // wordCounter is the total no of words in each event to be trasfered on
@@ -608,9 +602,8 @@ namespace pixelgpudetails {
     {
       // clusterizer ...
       using namespace gpuClustering;
-      int minGridSize = 0;
       int threadsPerBlock = 256;
-      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &threadsPerBlock, gpuCalibPixel::calibDigis, 0, 0);
+      cms::cuda::ExecutionConfiguration(gpuCalibPixel::calibDigis, &threadsPerBlock);
       int blocks =
           (std::max(int(wordCounter), int(gpuClustering::MaxNumModules)) + threadsPerBlock - 1) / threadsPerBlock;
 
@@ -635,8 +628,7 @@ namespace pixelgpudetails {
                 << " threads\n";
 #endif
 
-      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &threadsPerBlock,
-          countModules, 0, 0);
+      cms::cuda::ExecutionConfiguration(countModules, &threadsPerBlock);
       blocks =
           (std::max(int(wordCounter), int(gpuClustering::MaxNumModules)) + threadsPerBlock - 1) / threadsPerBlock;
       countModules<<<blocks, threadsPerBlock, 0, stream>>>(
@@ -648,8 +640,7 @@ namespace pixelgpudetails {
           &(nModules_Clusters_h[0]), clusters_d.moduleStart(), sizeof(uint32_t), cudaMemcpyDefault, stream));
 
       threadsPerBlock = 256;
-      cudaOccupancyMaxPotentialBlockSize(&minGridSize, &threadsPerBlock,
-          findClus, 0, 0);
+      cms::cuda::ExecutionConfiguration(findClus, &threadsPerBlock);
       blocks = MaxNumModules;
 #ifdef GPU_DEBUG
       std::cout << "CUDA findClus kernel launch with " << blocks << " blocks of " << threadsPerBlock << " threads\n";
@@ -669,6 +660,7 @@ namespace pixelgpudetails {
 #endif
 
       // apply charge cut
+      cms::cuda::ExecutionConfiguration(clusterChargeCut, &threadsPerBlock);
       clusterChargeCut<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.moduleInd(),
                                                                digis_d.c_adc(),
                                                                clusters_d.c_moduleStart(),

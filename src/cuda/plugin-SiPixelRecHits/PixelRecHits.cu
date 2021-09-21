@@ -8,6 +8,7 @@
 // CMSSW headers
 #include "CUDACore/cudaCheck.h"
 #include "CUDACore/device_unique_ptr.h"
+#include "CUDACore/ExecutionConfiguration.h"
 #include "plugin-SiPixelClusterizer/SiPixelRawToClusterGPUKernel.h"  // !
 #include "plugin-SiPixelClusterizer/gpuClusteringConstants.h"        // !
 
@@ -48,6 +49,7 @@ namespace pixelgpudetails {
     std::cout << "launching getHits kernel for " << blocks << " blocks" << std::endl;
 #endif
     if (blocks)  // protect from empty events
+      cms::cuda::ExecutionConfiguration(gpuPixelRecHits::getHits, &threadsPerBlock); 
       gpuPixelRecHits::getHits<<<blocks, threadsPerBlock, 0, stream>>>(
           cpeParams, bs_d.data(), digis_d.view(), digis_d.nDigis(), clusters_d.view(), hits_d.view());
     cudaCheck(cudaGetLastError());
