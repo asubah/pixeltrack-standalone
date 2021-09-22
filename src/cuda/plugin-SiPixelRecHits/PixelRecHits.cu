@@ -60,6 +60,7 @@ namespace pixelgpudetails {
 
     // assuming full warp of threads is better than a smaller number...
     if (nHits) {
+      cms::cuda::ExecutionConfiguration(setHitsLayerStart, &threadsPerBlock, 0, 1); 
       setHitsLayerStart<<<1, 32, 0, stream>>>(clusters_d.clusModuleStart(), cpeParams, hits_d.hitsLayerStart());
       cudaCheck(cudaGetLastError());
     }

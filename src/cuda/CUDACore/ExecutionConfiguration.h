@@ -9,25 +9,25 @@ namespace cms {
 
       //constexpr void construct(dim3 grid, dim3 block, size_t shmem, cudaStream_t stream) {
       template < typename T >
-      ExecutionConfiguration(T kernel, int* threads, int* minimum_blocks = nullptr) : 
-        m_threads((*threads)),
-        m_minimum_blocks((*minimum_blocks))
+      ExecutionConfiguration(T kernel, int* blockSize, size_t dynamicSMemSize = 0, int  blockSizeLimit = 0) : 
+        m_blockSize((*blockSize))
       {
         // Use cuda occupencey API
+        int gridSize = 0;
         
-        cudaOccupancyMaxPotentialBlockSize(minimum_blocks, threads, kernel, 0, 0);
-        printf("threads = %d\n", (*threads));
+        cudaOccupancyMaxPotentialBlockSize(&gridSize, blockSize, kernel, dynamicSMemSize, blockSizeLimit);
+        // printf("gridSize = %d, blockSize = %d\n", gridSize, (*blockSize));
                 
-        // if (blocks < minimum_blocks) {
-        //   threads = (wordCounter + threads -1) / minimum_blocks;
-        //   threads = ((threads + 32) / 32) * 32;
-        //   blocks = minimum_blocks;
+        // if (blocks < gridSize) {
+        //   blockSize = (wordCounter + blockSize -1) / gridSize;
+        //   blockSize = ((blockSize + 32) / 32) * 32;
+        //   blocks = gridSize;
         // }
       }
 
       private:
-        int m_threads;
-        int m_minimum_blocks;
+        int m_blockSize;
+        // int m_gridSize;
       // dim3 m_gird;
       // dim3 m_block;
       // size_t m_shmem;

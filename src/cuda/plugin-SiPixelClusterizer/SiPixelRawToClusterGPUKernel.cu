@@ -676,6 +676,7 @@ namespace pixelgpudetails {
       // synchronization/ExternalWork
 
       // MUST be ONE block
+      cms::cuda::ExecutionConfiguration(fillHitsModuleStart, &threadsPerBlock, 0, 1);
       fillHitsModuleStart<<<1, 1024, 0, stream>>>(clusters_d.c_clusInModule(), clusters_d.clusModuleStart());
 
       // last element holds the number of all clusters
