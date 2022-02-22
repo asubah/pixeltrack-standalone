@@ -1,20 +1,26 @@
-#include "AlpakaCore/alpakaCommon.h"
-#include "AlpakaDataFormats/PixelTrackAlpaka.h"
-#include "AlpakaDataFormats/SiPixelClustersAlpaka.h"
-#include "AlpakaDataFormats/SiPixelDigisAlpaka.h"
-#include "AlpakaDataFormats/ZVertexAlpaka.h"
-#include "DataFormats/DigiClusterCount.h"
-#include "DataFormats/TrackCount.h"
-#include "DataFormats/VertexCount.h"
-#include "Framework/EventSetup.h"
-#include "Framework/Event.h"
-#include "Framework/PluginFactory.h"
-#include "Framework/EDProducer.h"
-
 #include <atomic>
+#include <cmath>
 #include <iostream>
 #include <mutex>
 #include <sstream>
+#include <stdexcept>
+
+#include "AlpakaCore/Product.h"
+#include "AlpakaCore/ScopedContext.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaDataFormats/PixelTrackHost.h"
+#include "AlpakaDataFormats/ZVertexHost.h"
+#include "AlpakaDataFormats/alpaka/PixelTrackAlpaka.h"
+#include "AlpakaDataFormats/alpaka/SiPixelClustersAlpaka.h"
+#include "AlpakaDataFormats/alpaka/SiPixelDigisAlpaka.h"
+#include "AlpakaDataFormats/alpaka/ZVertexAlpaka.h"
+#include "DataFormats/DigiClusterCount.h"
+#include "DataFormats/TrackCount.h"
+#include "DataFormats/VertexCount.h"
+#include "Framework/EDProducer.h"
+#include "Framework/Event.h"
+#include "Framework/EventSetup.h"
+#include "Framework/PluginFactory.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
@@ -30,8 +36,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     edm::EDGetTokenT<TrackCount> trackCountToken_;
     edm::EDGetTokenT<VertexCount> vertexCountToken_;
 
-    edm::EDGetTokenT<SiPixelDigisAlpaka> digiToken_;
-    edm::EDGetTokenT<SiPixelClustersAlpaka> clusterToken_;
+    edm::EDGetTokenT<cms::alpakatools::Product<Queue, SiPixelDigisAlpaka>> digiToken_;
+    edm::EDGetTokenT<cms::alpakatools::Product<Queue, SiPixelClustersAlpaka>> clusterToken_;
     edm::EDGetTokenT<PixelTrackHost> trackToken_;
     edm::EDGetTokenT<ZVertexHost> vertexToken_;
 
@@ -53,8 +59,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       : digiClusterCountToken_(reg.consumes<DigiClusterCount>()),
         trackCountToken_(reg.consumes<TrackCount>()),
         vertexCountToken_(reg.consumes<VertexCount>()),
-        digiToken_(reg.consumes<SiPixelDigisAlpaka>()),
-        clusterToken_(reg.consumes<SiPixelClustersAlpaka>()),
+        digiToken_(reg.consumes<cms::alpakatools::Product<Queue, SiPixelDigisAlpaka>>()),
+        clusterToken_(reg.consumes<cms::alpakatools::Product<Queue, SiPixelClustersAlpaka>>()),
         trackToken_(reg.consumes<PixelTrackHost>()),
         vertexToken_(reg.consumes<ZVertexHost>()) {}
 
@@ -66,10 +72,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
     ss << "Event " << iEvent.eventID() << " ";
 
+    auto const& pdigis = iEvent.get(digiToken_);
+    cms::alpakatools::ScopedContextProduce<Queue> ctx{pdigis};
     {
       auto const& count = iEvent.get(digiClusterCountToken_);
-      auto const& digis = iEvent.get(digiToken_);
-      auto const& clusters = iEvent.get(clusterToken_);
+      auto const& digis = ctx.get(iEvent, digiToken_);
+      auto const& clusters = ctx.get(iEvent, clusterToken_);
 
       if (digis.nModules() != count.nModules()) {
         ss << "\n N(modules) is " << digis.nModules() << " expected " << count.nModules();
@@ -87,9 +95,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
     {
       auto const& count = iEvent.get(trackCountToken_);
-      auto const& tracksBuf = iEvent.get(trackToken_);
-      auto const tracks = alpaka::getPtrNative(tracksBuf);
-
+      auto const& tracks = iEvent.get(trackToken_);
       int nTracks = 0;
       for (int i = 0; i < tracks->stride(); ++i) {
         if (tracks->nHits(i) > 0) {
@@ -111,9 +117,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
     {
       auto const& count = iEvent.get(vertexCountToken_);
-      auto const& verticesBuf = iEvent.get(vertexToken_);
-      auto const vertices = alpaka::getPtrNative(verticesBuf);
-
+      auto const& vertices = iEvent.get(vertexToken_);
       auto diff = std::abs(int(vertices->nvFinal) - int(count.nVertices()));
       if (diff != 0) {
         sumVertexDifference += diff;

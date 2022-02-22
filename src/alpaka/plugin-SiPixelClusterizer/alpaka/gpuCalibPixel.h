@@ -1,13 +1,13 @@
-#ifndef RecoLocalTracker_SiPixelClusterizer_plugins_gpuCalibPixel_h
-#define RecoLocalTracker_SiPixelClusterizer_plugins_gpuCalibPixel_h
+#ifndef plugin_SiPixelClusterizer_alpaka_gpuCalibPixel_h
+#define plugin_SiPixelClusterizer_alpaka_gpuCalibPixel_h
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 
-#include "AlpakaCore/alpakaKernelCommon.h"
-
-#include "CondFormats/SiPixelGainForHLTonGPU.h"
+#include "AlpakaCore/alpakaConfig.h"
 #include "AlpakaDataFormats/gpuClusteringConstants.h"
+#include "CondFormats/alpaka/SiPixelGainForHLTonGPU.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
   namespace gpuCalibPixel {
@@ -21,17 +21,14 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     constexpr float VCaltoElectronOffset_L1 = -670;  // L1:   -670 +- 220
 
     struct calibDigis {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     bool isRun2,
                                     uint16_t* id,
                                     uint16_t const* __restrict__ x,
                                     uint16_t const* __restrict__ y,
                                     uint16_t* adc,
-                                    //SiPixelGainForHLTonGPU const* __restrict__ ped,
-                                    const SiPixelGainForHLTonGPU::DecodingStructure* __restrict__ v_pedestals,
-                                    const SiPixelGainForHLTonGPU::RangeAndCols* __restrict__ rangeAndCols,
-                                    const SiPixelGainForHLTonGPU::Fields* __restrict__ fields,
+                                    SiPixelGainForHLTonGPU const* __restrict__ ped,
                                     int numElements,
                                     uint32_t* __restrict__ moduleStart,        // just to zero first
                                     uint32_t* __restrict__ nClustersInModule,  // just to zero them
@@ -56,8 +53,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
             int row = x[i];
             int col = y[i];
-            auto ret = SiPixelGainForHLTonGPU::getPedAndGain(
-                v_pedestals, rangeAndCols, fields, id[i], col, row, isDeadColumn, isNoisyColumn);
+            auto ret = ped->getPedAndGain(id[i], col, row, isDeadColumn, isNoisyColumn);
             float pedestal = ret.first;
             float gain = ret.second;
             // float pedestal = 0; float gain = 1.;
@@ -76,4 +72,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   }  // namespace gpuCalibPixel
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoLocalTracker_SiPixelClusterizer_plugins_gpuCalibPixel_h
+#endif  // plugin_SiPixelClusterizer_alpaka_gpuCalibPixel_h

@@ -145,17 +145,21 @@ namespace KOKKOS_NAMESPACE {
     public:
       class WordFedAppender {
       public:
-        WordFedAppender();
+        WordFedAppender(KokkosExecSpace const& execSpace);
         ~WordFedAppender() = default;
 
         void initializeWordFed(int fedId, unsigned int wordCounterGPU, const uint32_t* src, unsigned int length);
 
-        Kokkos::View<unsigned int const*, KokkosExecSpace>::HostMirror word() const { return word_; }
-        Kokkos::View<unsigned char const*, KokkosExecSpace>::HostMirror fedId() const { return fedId_; }
+        Kokkos::View<unsigned int const*, KokkosHostMemSpace, RestrictUnmanaged> word() const {
+          return cms::kokkos::to_view(word_);
+        }
+        Kokkos::View<unsigned char const*, KokkosHostMemSpace, RestrictUnmanaged> fedId() const {
+          return cms::kokkos::to_view(fedId_);
+        }
 
       private:
-        Kokkos::View<unsigned int*, KokkosExecSpace>::HostMirror word_;
-        Kokkos::View<unsigned char*, KokkosExecSpace>::HostMirror fedId_;
+        cms::kokkos::shared_ptr<unsigned int[], KokkosHostMemSpace> word_;
+        cms::kokkos::shared_ptr<unsigned char[], KokkosHostMemSpace> fedId_;
       };
 
       SiPixelRawToClusterGPUKernel() : nModules_Clusters_h("nModules_Clusters_h", 2){};
@@ -166,35 +170,36 @@ namespace KOKKOS_NAMESPACE {
       SiPixelRawToClusterGPUKernel& operator=(const SiPixelRawToClusterGPUKernel&) = delete;
       SiPixelRawToClusterGPUKernel& operator=(SiPixelRawToClusterGPUKernel&&) = delete;
 
-      void makeClustersAsync(bool isRun2,
-                             const Kokkos::View<const SiPixelFedCablingMapGPU, KokkosExecSpace>& cablingMap,
-                             const Kokkos::View<const unsigned char*, KokkosExecSpace>& modToUnp,
-                             const SiPixelGainForHLTonGPU<KokkosExecSpace>& gains,
-                             const WordFedAppender& wordFed,
-                             PixelFormatterErrors&& errors,
-                             const uint32_t wordCounter,
-                             const uint32_t fedCounter,
-                             bool useQualityInfo,
-                             bool includeErrors,
-                             bool debug,
-                             KokkosExecSpace const& execSpace);
+      void makeClustersAsync(
+          bool isRun2,
+          const Kokkos::View<const SiPixelFedCablingMapGPU, KokkosDeviceMemSpace, Restrict>& cablingMap,
+          const Kokkos::View<const unsigned char*, KokkosDeviceMemSpace, Restrict>& modToUnp,
+          const SiPixelGainForHLTonGPU<KokkosDeviceMemSpace>& gains,
+          const WordFedAppender& wordFed,
+          PixelFormatterErrors&& errors,
+          const uint32_t wordCounter,
+          const uint32_t fedCounter,
+          bool useQualityInfo,
+          bool includeErrors,
+          bool debug,
+          KokkosExecSpace const& execSpace);
 
-      std::pair<SiPixelDigisKokkos<KokkosExecSpace>, SiPixelClustersKokkos<KokkosExecSpace>> getResults() {
+      std::pair<SiPixelDigisKokkos<KokkosDeviceMemSpace>, SiPixelClustersKokkos<KokkosDeviceMemSpace>> getResults() {
         digis_d.setNModulesDigis(nModules_Clusters_h(0), nDigis);
         clusters_d.setNClusters(nModules_Clusters_h(1));
         return std::make_pair(std::move(digis_d), std::move(clusters_d));
       }
-      SiPixelDigiErrorsKokkos<KokkosExecSpace> getErrors() { return std::move(digiErrors_d); }
+      SiPixelDigiErrorsKokkos<KokkosDeviceMemSpace> getErrors() { return std::move(digiErrors_d); }
 
     private:
       uint32_t nDigis = 0;
 
       // Data to be put in the event
-      Kokkos::View<uint32_t*, KokkosExecSpace>::HostMirror nModules_Clusters_h;
+      Kokkos::View<uint32_t*, KokkosHostMemSpace> nModules_Clusters_h;
 
-      SiPixelDigisKokkos<KokkosExecSpace> digis_d;
-      SiPixelClustersKokkos<KokkosExecSpace> clusters_d;
-      SiPixelDigiErrorsKokkos<KokkosExecSpace> digiErrors_d;
+      SiPixelDigisKokkos<KokkosDeviceMemSpace> digis_d;
+      SiPixelClustersKokkos<KokkosDeviceMemSpace> clusters_d;
+      SiPixelDigiErrorsKokkos<KokkosDeviceMemSpace> digiErrors_d;
     };
 
     // see RecoLocalTracker/SiPixelClusterizer

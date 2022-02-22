@@ -1,4 +1,8 @@
-#include "AlpakaCore/alpakaCommon.h"
+//#include <iostream>
+
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaCore/alpakaMemory.h"
+#include "AlpakaCore/alpakaWorkDiv.h"
 
 #include "gpuVertexFinder.h"
 #include "gpuClusterTracksByDensity.h"
@@ -13,11 +17,11 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   namespace gpuVertexFinder {
 
     struct loadTracks {
-      template <typename T_Acc>
+      template <typename TAcc>
       ALPAKA_FN_ACC void operator()(
-          const T_Acc& acc, TkSoA const* ptracks, ZVertexSoA* soa, WorkSpace* pws, float ptMin) const {
-        assert(ptracks);
-        assert(soa);
+          const TAcc& acc, TkSoA const* ptracks, ZVertexSoA* soa, WorkSpace* pws, float ptMin) const {
+        ALPAKA_ASSERT_OFFLOAD(ptracks);
+        ALPAKA_ASSERT_OFFLOAD(soa);
         auto const& tracks = *ptracks;
         auto const& fit = tracks.stateAtBS;
         auto const* quality = tracks.qualityData();
@@ -53,8 +57,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 // #define THREE_KERNELS
 #ifndef THREE_KERNELS
     struct vertexFinderOneKernel {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     gpuVertexFinder::ZVertices* pdata,
                                     gpuVertexFinder::WorkSpace* pws,
                                     int minT,      // min number of neighbours to be "seed"
@@ -75,8 +79,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     };
 #else
     struct vertexFinderKernel1 {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     gpuVertexFinder::ZVertices* pdata,
                                     gpuVertexFinder::WorkSpace* pws,
                                     int minT,      // min number of neighbours to be "seed"
@@ -91,8 +95,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     };
 
     struct vertexFinderKernel2 {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     gpuVertexFinder::ZVertices* pdata,
                                     gpuVertexFinder::WorkSpace* pws) const {
         fitVertices(acc, pdata, pws, 5000.);
@@ -104,47 +108,47 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
     ZVertexAlpaka Producer::makeAsync(TkSoA const* tksoa, float ptMin, Queue& queue) const {
       // std::cout << "producing Vertices on GPU" << std::endl;
-      assert(tksoa);
+      ALPAKA_ASSERT_OFFLOAD(tksoa);
 
-      ZVertexAlpaka vertices{cms::alpakatools::allocDeviceBuf<ZVertexSoA>(1u)};
-      auto* soa = alpaka::getPtrNative(vertices);
-      assert(soa);
+      ZVertexAlpaka vertices = cms::alpakatools::make_device_buffer<ZVertexSoA>(queue);
+      auto* soa = vertices.data();
+      ALPAKA_ASSERT_OFFLOAD(soa);
 
-      auto ws_dBuf{cms::alpakatools::allocDeviceBuf<WorkSpace>(1u)};
-      auto ws_d = alpaka::getPtrNative(ws_dBuf);
+      auto ws_dBuf{cms::alpakatools::make_device_buffer<WorkSpace>(queue)};
+      auto ws_d = ws_dBuf.data();
 
-      auto nvFinalVerticesView = cms::alpakatools::createDeviceView<uint32_t>(&soa->nvFinal, 1u);
-      alpaka::memset(queue, nvFinalVerticesView, 0, 1u);
-      auto ntrksWorkspaceView = cms::alpakatools::createDeviceView<uint32_t>(&ws_d->ntrks, 1u);
-      alpaka::memset(queue, ntrksWorkspaceView, 0, 1u);
-      auto nvIntermediateWorkspaceView = cms::alpakatools::createDeviceView<uint32_t>(&ws_d->nvIntermediate, 1u);
-      alpaka::memset(queue, nvIntermediateWorkspaceView, 0, 1u);
+      auto nvFinalVerticesView = cms::alpakatools::make_device_view(alpaka::getDev(queue), soa->nvFinal);
+      alpaka::memset(queue, nvFinalVerticesView, 0);
+      auto ntrksWorkspaceView = cms::alpakatools::make_device_view(alpaka::getDev(queue), ws_d->ntrks);
+      alpaka::memset(queue, ntrksWorkspaceView, 0);
+      auto nvIntermediateWorkspaceView =
+          cms::alpakatools::make_device_view(alpaka::getDev(queue), ws_d->nvIntermediate);
+      alpaka::memset(queue, nvIntermediateWorkspaceView, 0);
 
       const uint32_t blockSize = 128;
-      const uint32_t numberOfBlocks = (TkSoA::stride() + blockSize - 1) / blockSize;
-      const WorkDiv1 loadTracksWorkDiv =
-          cms::alpakatools::make_workdiv(Vec1::all(numberOfBlocks), Vec1::all(blockSize));
-      alpaka::enqueue(queue, alpaka::createTaskKernel<Acc1>(loadTracksWorkDiv, loadTracks(), tksoa, soa, ws_d, ptMin));
+      const uint32_t numberOfBlocks = cms::alpakatools::divide_up_by(TkSoA::stride(), blockSize);
+      const auto loadTracksWorkDiv = cms::alpakatools::make_workdiv<Acc1D>(numberOfBlocks, blockSize);
+      alpaka::enqueue(queue, alpaka::createTaskKernel<Acc1D>(loadTracksWorkDiv, loadTracks(), tksoa, soa, ws_d, ptMin));
 
-      const WorkDiv1 finderSorterWorkDiv = cms::alpakatools::make_workdiv(Vec1::all(1), Vec1::all(1024 - 256));
-      const WorkDiv1 splitterFitterWorkDiv = cms::alpakatools::make_workdiv(Vec1::all(1024), Vec1::all(128));
+      const auto finderSorterWorkDiv = cms::alpakatools::make_workdiv<Acc1D>(1, 1024 - 256);
+      const auto splitterFitterWorkDiv = cms::alpakatools::make_workdiv<Acc1D>(1024, 128);
 
       if (oneKernel_) {
         // implemented only for density clustesrs
 #ifndef THREE_KERNELS
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(
+                        alpaka::createTaskKernel<Acc1D>(
                             finderSorterWorkDiv, vertexFinderOneKernel(), soa, ws_d, minT, eps, errmax, chi2max));
 
 #else
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(
+                        alpaka::createTaskKernel<Acc1D>(
                             finderSorterWorkDiv, vertexFinderKernel1(), soa, ws_d, minT, eps, errmax, chi2max));
         // one block per vertex...
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(splitterFitterWorkDiv, splitVerticesKernel(), soa, ws_d, 9.f));
+                        alpaka::createTaskKernel<Acc1D>(splitterFitterWorkDiv, splitVerticesKernel(), soa, ws_d, 9.f));
 
-        alpaka::enqueue(queue, alpaka::createTaskKernel<Acc1>(finderSorterWorkDiv, vertexFinderKernel2(), soa, ws_d));
+        alpaka::enqueue(queue, alpaka::createTaskKernel<Acc1D>(finderSorterWorkDiv, vertexFinderKernel2(), soa, ws_d));
 #endif
 
       } else {  // five kernels
@@ -152,31 +156,30 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         if (useDensity_) {
           alpaka::enqueue(
               queue,
-              alpaka::createTaskKernel<Acc1>(
+              alpaka::createTaskKernel<Acc1D>(
                   finderSorterWorkDiv, clusterTracksByDensityKernel(), soa, ws_d, minT, eps, errmax, chi2max));
         } else if (useDBSCAN_) {
           alpaka::enqueue(queue,
-                          alpaka::createTaskKernel<Acc1>(
+                          alpaka::createTaskKernel<Acc1D>(
                               finderSorterWorkDiv, clusterTracksDBSCAN(), soa, ws_d, minT, eps, errmax, chi2max));
         } else if (useIterative_) {
           alpaka::enqueue(queue,
-                          alpaka::createTaskKernel<Acc1>(
+                          alpaka::createTaskKernel<Acc1D>(
                               finderSorterWorkDiv, clusterTracksIterative(), soa, ws_d, minT, eps, errmax, chi2max));
         }
 
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(finderSorterWorkDiv, fitVerticesKernel(), soa, ws_d, 50.));
+                        alpaka::createTaskKernel<Acc1D>(finderSorterWorkDiv, fitVerticesKernel(), soa, ws_d, 50.));
         // one block per vertex...
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(splitterFitterWorkDiv, splitVerticesKernel(), soa, ws_d, 9.f));
+                        alpaka::createTaskKernel<Acc1D>(splitterFitterWorkDiv, splitVerticesKernel(), soa, ws_d, 9.f));
 
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(finderSorterWorkDiv, fitVerticesKernel(), soa, ws_d, 5000.));
+                        alpaka::createTaskKernel<Acc1D>(finderSorterWorkDiv, fitVerticesKernel(), soa, ws_d, 5000.));
 
-        alpaka::enqueue(queue, alpaka::createTaskKernel<Acc1>(finderSorterWorkDiv, sortByPt2Kernel(), soa, ws_d));
+        alpaka::enqueue(queue, alpaka::createTaskKernel<Acc1D>(finderSorterWorkDiv, sortByPt2Kernel(), soa, ws_d));
       }
 
-      alpaka::wait(queue);
       return vertices;
     }
 

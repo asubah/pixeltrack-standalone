@@ -1,9 +1,9 @@
-#ifndef RecoPixelVertexing_PixelVertexFinding_src_gpuVertexFinder_h
-#define RecoPixelVertexing_PixelVertexFinding_src_gpuVertexFinder_h
+#ifndef plugin_PixelVertexFinding_alpaka_gpuVertexFinder_h
+#define plugin_PixelVertexFinding_alpaka_gpuVertexFinder_h
 
-#include "AlpakaCore/alpakaCommon.h"
-#include "AlpakaDataFormats/ZVertexAlpaka.h"
-#include "AlpakaDataFormats/PixelTrackAlpaka.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaDataFormats/alpaka/PixelTrackAlpaka.h"
+#include "AlpakaDataFormats/alpaka/ZVertexAlpaka.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
   namespace gpuVertexFinder {
@@ -70,4 +70,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   }  // namespace gpuVertexFinder
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoPixelVertexing_PixelVertexFinding_src_gpuVertexFinder_h
+#endif  // plugin_PixelVertexFinding_alpaka_gpuVertexFinder_h

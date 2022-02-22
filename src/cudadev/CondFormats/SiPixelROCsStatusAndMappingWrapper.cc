@@ -1,5 +1,6 @@
 // C++ includes
 #include <algorithm>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <vector>
@@ -15,7 +16,7 @@
 #include "CondFormats/SiPixelROCsStatusAndMappingWrapper.h"
 
 SiPixelROCsStatusAndMappingWrapper::SiPixelROCsStatusAndMappingWrapper(SiPixelROCsStatusAndMapping const& cablingMap,
-                                                               std::vector<unsigned char> modToUnp)
+                                                                       std::vector<unsigned char> modToUnp)
     : modToUnpDefault(modToUnp.size()), hasQuality_(true) {
   cudaCheck(cudaMallocHost(&cablingMapHost, sizeof(SiPixelROCsStatusAndMapping)));
   std::memcpy(cablingMapHost, &cablingMap, sizeof(SiPixelROCsStatusAndMapping));
@@ -25,7 +26,8 @@ SiPixelROCsStatusAndMappingWrapper::SiPixelROCsStatusAndMappingWrapper(SiPixelRO
 
 SiPixelROCsStatusAndMappingWrapper::~SiPixelROCsStatusAndMappingWrapper() { cudaCheck(cudaFreeHost(cablingMapHost)); }
 
-const SiPixelROCsStatusAndMapping* SiPixelROCsStatusAndMappingWrapper::getGPUProductAsync(cudaStream_t cudaStream) const {
+const SiPixelROCsStatusAndMapping* SiPixelROCsStatusAndMappingWrapper::getGPUProductAsync(
+    cudaStream_t cudaStream) const {
   const auto& data = gpuData_.dataForCurrentDeviceAsync(cudaStream, [this](GPUData& data, cudaStream_t stream) {
     // allocate
     cudaCheck(cudaMalloc(&data.cablingMapDevice, sizeof(SiPixelROCsStatusAndMapping)));

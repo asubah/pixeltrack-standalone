@@ -1,8 +1,10 @@
-#ifndef Geometry_TrackerGeometryBuilder_phase1PixelTopology_h
-#define Geometry_TrackerGeometryBuilder_phase1PixelTopology_h
+#ifndef Geometry_phase1PixelTopology_h
+#define Geometry_phase1PixelTopology_h
 
-#include <cstdint>
 #include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <utility>
 
 namespace phase1PixelTopology {
 
@@ -171,4 +173,4 @@ namespace phase1PixelTopology {
 
 }  // namespace phase1PixelTopology
 
-#endif  // Geometry_TrackerGeometryBuilder_phase1PixelTopology_h
+#endif  // Geometry_phase1PixelTopology_h

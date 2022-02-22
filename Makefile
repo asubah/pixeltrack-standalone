@@ -1,7 +1,28 @@
 export BASE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 
-# Build flags
+# Compiler
+export CC  := gcc
 export CXX := g++
+CXX_MAJOR:=$(shell $(CXX) -dM -E -x c++ - < /dev/null | awk '/__GNUC__/ { print $$3; }')
+CXX_MINOR:=$(shell $(CXX) -dM -E -x c++ - < /dev/null | awk '/__GNUC_MINOR__/ { print $$3; }')
+CXX_VERSION:=$(shell echo $$(( $(CXX_MAJOR) * 100 + $(CXX_MINOR) )) )
+
+CXX_REQUIRED_MAJOR:=8
+CXX_REQUIRED_MINOR:=0
+CXX_REQUIRED_VERSION:=$(shell echo $$(( $(CXX_REQUIRED_MAJOR) * 100 + $(CXX_REQUIRED_MINOR) )) )
+
+CXX_SUPPORTED:=$(shell [ $(CXX_VERSION) -ge $(CXX_REQUIRED_VERSION) ] && echo true || echo false)
+ifeq ($(CXX_SUPPORTED),false)
+$(error This program requires GCC $(CXX_REQUIRED_MAJOR).$(CXX_REQUIRED_MINOR) or later, but the current compiler is GCC $(CXX_MAJOR).$(CXX_MINOR))
+endif
+
+# special case: issue a warning for GCC 10.3
+# Do not prevent from using it, because the version bundled with CMSSW has been patched
+ifeq ($(CXX_VERSION),1003)
+$(warning GCC 10.3 is known to have issues compiled CUDA code, please consider using a different compiler)
+endif
+
+# Build flags
 USER_CXXFLAGS :=
 HOST_CXXFLAGS := -O2 -fPIC -fdiagnostics-show-option -felide-constructors -fmessage-length=0 -fno-math-errno -ftree-vectorize -fvisibility-inlines-hidden --param vect-max-version-for-alias-checks=50 -msse3 -pipe -pthread -Werror=address -Wall -Werror=array-bounds -Wno-attributes -Werror=conversion-null -Werror=delete-non-virtual-dtor -Wno-deprecated -Werror=format-contains-nul -Werror=format -Wno-long-long -Werror=main -Werror=missing-braces -Werror=narrowing -Wno-non-template-friend -Wnon-virtual-dtor -Werror=overflow -Werror=overlength-strings -Wparentheses -Werror=pointer-arith -Wno-psabi -Werror=reorder -Werror=return-local-addr -Wreturn-type -Werror=return-type -Werror=sign-compare -Werror=strict-aliasing -Wstrict-overflow -Werror=switch -Werror=type-limits -Wunused -Werror=unused-but-set-variable -Wno-unused-local-typedefs -Werror=unused-value -Wno-error=unused-variable -Wno-vla -Werror=write-strings
 export CXXFLAGS := -std=c++17 $(HOST_CXXFLAGS) $(USER_CXXFLAGS) -g
@@ -81,57 +102,62 @@ DATA_TAR_GZ := $(DATA_BASE)/data.tar.gz
 # External definitions
 EXTERNAL_BASE := $(BASE_DIR)/external
 
+HWLOC_BASE := $(EXTERNAL_BASE)/hwloc
+export HWLOC_DEPS := $(HWLOC_BASE)
+HWLOC_CXXFLAGS := -isystem $(HWLOC_BASE)/include
+HWLOC_LDFLAGS := -L$(HWLOC_BASE)/lib -lhwloc
+
 TBB_BASE := $(EXTERNAL_BASE)/tbb
 TBB_LIBDIR := $(TBB_BASE)/lib
 TBB_LIB := $(TBB_LIBDIR)/libtbb.so
+TBB_CMAKEFLAGS := -DCMAKE_INSTALL_PREFIX=$(TBB_BASE) \
+	          -DCMAKE_INSTALL_LIBDIR=lib \
+                  -DCMAKE_HWLOC_2_INCLUDE_PATH=$(HWLOC_BASE)/include \
+                  -DCMAKE_HWLOC_2_LIBRARY_PATH=$(HWLOC_BASE)/lib/libhwloc.so \
+                  -DTBB_CPF=ON
 export TBB_DEPS := $(TBB_LIB)
-export TBB_CXXFLAGS := -I$(TBB_BASE)/include
+export TBB_CXXFLAGS := -isystem $(TBB_BASE)/include -DTBB_SUPPRESS_DEPRECATED_MESSAGES -DTBB_PREVIEW_NUMA_SUPPORT -DTBB_PREVIEW_TASK_GROUP_EXTENSIONS
 export TBB_LDFLAGS := -L$(TBB_LIBDIR) -ltbb
 export TBB_NVCC_CXXFLAGS :=
 
 EIGEN_BASE := $(EXTERNAL_BASE)/eigen
 export EIGEN_DEPS := $(EIGEN_BASE)
-export EIGEN_CXXFLAGS := -I$(EIGEN_BASE) -DEIGEN_DONT_PARALLELIZE
+export EIGEN_CXXFLAGS := -isystem $(EIGEN_BASE) -DEIGEN_DONT_PARALLELIZE
 export EIGEN_LDFLAGS :=
 export EIGEN_NVCC_CXXFLAGS := --diag-suppress 20014
 
 BOOST_BASE := /usr
-# Minimum required version of Boost, e.g. 1.65.1
-BOOST_MIN_VERSION := 106501
+# Minimum required version of Boost, e.g. 1.73.0
+BOOST_MIN_VERSION := 107300
 # Check if an external version of Boost is present and recent enough
 ifeq ($(wildcard $(BOOST_BASE)/include/boost/version.hpp),)
 NEED_BOOST := true
 else
-NEED_BOOST := $(shell awk '/\#define BOOST_VERSION\>/ { if ($$3 < $(BOOST_MIN_VERSION)) print "true" }' $(BOOST_BASE)/include/boost/version.hpp )
+NEED_BOOST := $(shell awk '/.define *BOOST_VERSION\>/ { if ($$3 < $(BOOST_MIN_VERSION)) print "true"; else print "false"; }' $(BOOST_BASE)/include/boost/version.hpp )
 endif
 ifeq ($(NEED_BOOST),true)
 BOOST_BASE := $(EXTERNAL_BASE)/boost
 endif
 export BOOST_DEPS := $(BOOST_BASE)
-export BOOST_CXXFLAGS := -I$(BOOST_BASE)/include
+export BOOST_CXXFLAGS := -isystem $(BOOST_BASE)/include
 export BOOST_LDFLAGS := -L$(BOOST_BASE)/lib
 export BOOST_NVCC_CXXFLAGS :=
 
 BACKTRACE_BASE := $(EXTERNAL_BASE)/libbacktrace
 export BACKTRACE_DEPS := $(BACKTRACE_BASE)
-export BACKTRACE_CXXFLAGS := -I$(BACKTRACE_BASE)/include
+export BACKTRACE_CXXFLAGS := -isystem $(BACKTRACE_BASE)/include
 export BACKTRACE_LDFLAGS := -L$(BACKTRACE_BASE)/lib -lbacktrace
-
-HWLOC_BASE := $(EXTERNAL_BASE)/hwloc
-export HWLOC_DEPS := $(HWLOC_BASE)
-HWLOC_CXXFLAGS := -I$(HWLOC_BASE)/include
-HWLOC_LDFLAGS := -L$(HWLOC_BASE)/lib -lhwloc
 
 ALPAKA_BASE := $(EXTERNAL_BASE)/alpaka
 export ALPAKA_DEPS := $(ALPAKA_BASE)
-export ALPAKA_CXXFLAGS := -I$(ALPAKA_BASE)/include
+export ALPAKA_CXXFLAGS := -isystem $(ALPAKA_BASE)/include
 # Temporarily filter out missing-braces warning, see https://github.com/cms-patatrack/pixeltrack-standalone/issues/126
 export ALPAKA_CUFLAGS := $(filter-out -Werror=missing-braces,$(CUDA_CUFLAGS))
 
 CUPLA_BASE := $(EXTERNAL_BASE)/cupla
 export CUPLA_DEPS := $(CUPLA_BASE)/lib
 export CUPLA_LIBDIR := $(CUPLA_BASE)/lib
-export CUPLA_CXXFLAGS := -I$(CUPLA_BASE)/include
+export CUPLA_CXXFLAGS := -isystem $(CUPLA_BASE)/include
 export CUPLA_LDFLAGS := -L$(CUPLA_LIBDIR)
 export CUPLA_NVCC_CXXFLAGS :=
 
@@ -152,6 +178,8 @@ else ifeq ($(KOKKOS_CUDA_ARCH),70)
   KOKKOS_CMAKE_CUDA_ARCH := -DKokkos_ARCH_VOLTA70=On
 else ifeq ($(KOKKOS_CUDA_ARCH),75)
   KOKKOS_CMAKE_CUDA_ARCH := -DKokkos_ARCH_TURING75=On
+else ifeq ($(KOKKOS_CUDA_ARCH),80)
+  KOKKOS_CMAKE_CUDA_ARCH := -DKokkos_ARCH_AMPERE80=On
 else
   $(error Unsupported KOKKOS_CUDA_ARCH $(KOKKOS_CUDA_ARCH). Likely it is sufficient just add another case in the Makefile)
 endif
@@ -163,7 +191,7 @@ else ifeq ($(KOKKOS_HIP_ARCH),VEGA909)
 else
   $(error Unsupported KOKKOS_HIP_ARCH $(KOKKOS_HIP_ARCH). Likely it is sufficient just add another case in the Makefile)
 endif
-export KOKKOS_CXXFLAGS := -I$(KOKKOS_INSTALL)/include
+export KOKKOS_CXXFLAGS := -isystem $(KOKKOS_INSTALL)/include
 $(eval $(call CUFLAGS_template,$(KOKKOS_CUDA_ARCH),KOKKOS_))
 export KOKKOS_LDFLAGS := -L$(KOKKOS_INSTALL)/lib -lkokkoscore -ldl
 export KOKKOS_NVCC_CXXFLAGS :=
@@ -242,7 +270,7 @@ endif
 endif
 ifdef SYCL_BASE
 export SYCL_CXX      := $(SYCL_BASE)/bin/dpcpp
-export SYCL_CXXFLAGS := -fsycl -I$(DPCT_BASE)/include $(filter-out $(SYCL_UNSUPPORTED_CXXFLAGS),$(CXXFLAGS))
+export SYCL_CXXFLAGS := -fsycl -isystem $(DPCT_BASE)/include $(filter-out $(SYCL_UNSUPPORTED_CXXFLAGS),$(CXXFLAGS))
 ifdef CUDA_BASE
 export SYCL_CUDA_PLUGIN := $(wildcard $(SYCL_LIBDIR)/libpi_cuda.so)
 export SYCL_CUDA_FLAGS  := --cuda-path=$(CUDA_BASE) -Wno-unknown-cuda-version
@@ -457,17 +485,24 @@ $(EXTERNAL_BASE):
 # TBB
 external_tbb: $(TBB_LIB)
 
-$(TBB_BASE):
-	git clone --branch 2019_U9 https://github.com/intel/tbb.git $@
-
-$(TBB_LIBDIR): $(TBB_BASE)
-	mkdir -p $@
-
 # Let TBB Makefile to define its own CXXFLAGS
+$(TBB_LIB): $(HWLOC_BASE)
 $(TBB_LIB): CXXFLAGS:=
-$(TBB_LIB): $(TBB_BASE) $(TBB_LIBDIR)
-	+$(MAKE) -C $(TBB_BASE) stdver=c++17
-	cp $$(find $(TBB_BASE)/build -name *.so*) $(TBB_LIBDIR)
+$(TBB_LIB):
+	$(eval TBB_TMP := $(shell mktemp -d))
+	$(eval TBB_TMP_SRC := $(TBB_TMP)/src)
+	$(eval TBB_TMP_BUILD := $(TBB_TMP)/build)
+	mkdir -p $(TBB_TMP)
+	mkdir -p $(TBB_TMP_SRC)
+	mkdir -p $(TBB_TMP_BUILD)
+	git clone --branch v2021.4.0 https://github.com/oneapi-src/oneTBB.git $(TBB_TMP_SRC)
+	cd $(TBB_TMP_BUILD)/ && $(CMAKE) $(TBB_TMP_SRC) $(TBB_CMAKEFLAGS)
+	+$(MAKE) -C $(TBB_TMP_BUILD)
+	+$(MAKE) -C $(TBB_TMP_BUILD) install
+	@rm -rf $(TBB_TMP)
+	$(eval undefine TBB_TMP)
+	$(eval undefine TBB_TMP_SRC)
+	$(eval undefine TBB_TMP_BUILD)
 
 # Eigen
 external_eigen: $(EIGEN_BASE)
@@ -527,7 +562,8 @@ $(HWLOC_BASE):
 external_alpaka: $(ALPAKA_BASE)
 
 $(ALPAKA_BASE):
-	git clone git@github.com:alpaka-group/alpaka.git -b 0.7.0 $@
+	git clone git@github.com:alpaka-group/alpaka.git -b develop $@
+	cd $@ && git checkout 26cabb4d5a635c75a75e37d4c4770d3bb71dcd1c
 
 # Cupla
 .PHONY: external_cupla
@@ -544,7 +580,7 @@ $(CUPLA_BASE)/lib: $(CUPLA_BASE) $(ALPAKA_DEPS) $(BOOST_DEPS) $(TBB_DEPS) $(CUDA
 external_kokkos: $(KOKKOS_LIB)
 
 $(KOKKOS_SRC):
-	git clone --branch 3.4.01 https://github.com/kokkos/kokkos.git $@
+	git clone --branch 3.5.00 https://github.com/kokkos/kokkos.git $@
 
 $(KOKKOS_BUILD):
 	mkdir -p $@

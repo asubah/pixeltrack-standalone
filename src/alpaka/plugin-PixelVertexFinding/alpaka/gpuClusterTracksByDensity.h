@@ -1,9 +1,11 @@
-#ifndef RecoPixelVertexing_PixelVertexFinding_src_gpuClusterTracksByDensity_h
-#define RecoPixelVertexing_PixelVertexFinding_src_gpuClusterTracksByDensity_h
+#ifndef plugin_PixelVertexFinding_alpaka_gpuClusterTracksByDensity_h
+#define plugin_PixelVertexFinding_alpaka_gpuClusterTracksByDensity_h
 
-#include "AlpakaCore/alpakaKernelCommon.h"
+#include <algorithm>
+#include <cmath>
 
 #include "AlpakaCore/HistoContainer.h"
+#include "AlpakaCore/alpakaConfig.h"
 
 #include "gpuVertexFinder.h"
 
@@ -16,9 +18,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     //
     // based on Rodrighez&Laio algo
     //
-    template <typename T_Acc>
+    template <typename TAcc>
     ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) void clusterTracksByDensity(
-        const T_Acc& acc,
+        const TAcc& acc,
         gpuVertexFinder::ZVertices* pdata,
         gpuVertexFinder::WorkSpace* pws,
         int minT,      // min number of neighbours to be "seed"
@@ -48,8 +50,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       int32_t* __restrict__ nn = data.ndof;
       int32_t* __restrict__ iv = ws.iv;
 
-      assert(pdata);
-      assert(zt);
+      ALPAKA_ASSERT_OFFLOAD(pdata);
+      ALPAKA_ASSERT_OFFLOAD(zt);
 
       using Hist = cms::alpakatools::HistoContainer<uint8_t, 256, 16000, 8, uint16_t>;
       auto& hist = alpaka::declareSharedVar<Hist, __COUNTER__>(acc);
@@ -61,17 +63,17 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       if (verbose && 0 == threadIdxLocal)
         printf("booked hist with %d bins, size %d for %d tracks\n", hist.nbins(), hist.capacity(), nt);
 
-      assert(nt <= hist.capacity());
+      ALPAKA_ASSERT_OFFLOAD(nt <= hist.capacity());
 
       // fill hist  (bin shall be wider than "eps")
       cms::alpakatools::for_each_element_in_block_strided(acc, nt, [&](uint32_t i) {
-        assert(i < ZVertices::MAXTRACKS);
+        ALPAKA_ASSERT_OFFLOAD(i < ZVertices::MAXTRACKS);
         int iz = int(zt[i] * 10.);  // valid if eps<=0.1
         // iz = std::clamp(iz, INT8_MIN, INT8_MAX);  // sorry c++17 only
         iz = std::min(std::max(iz, INT8_MIN), INT8_MAX);
         izt[i] = iz - INT8_MIN;
-        assert(iz - INT8_MIN >= 0);
-        assert(iz - INT8_MIN < 256);
+        ALPAKA_ASSERT_OFFLOAD(iz - INT8_MIN >= 0);
+        ALPAKA_ASSERT_OFFLOAD(iz - INT8_MIN < 256);
         hist.count(acc, izt[i]);
         iv[i] = i;
         nn[i] = 0;
@@ -86,7 +88,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       hist.finalize(acc, hws);
       alpaka::syncBlockThreads(acc);
 
-      assert(hist.size() == nt);
+      ALPAKA_ASSERT_OFFLOAD(hist.size() == nt);
       cms::alpakatools::for_each_element_in_block_strided(
           acc, nt, [&](uint32_t i) { hist.fill(acc, izt[i], uint16_t(i)); });
       alpaka::syncBlockThreads(acc);
@@ -136,7 +138,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       //  mini verification
       cms::alpakatools::for_each_element_in_block_strided(acc, nt, [&](uint32_t i) {
         if (iv[i] != int(i))
-          assert(iv[iv[i]] != int(i));
+          ALPAKA_ASSERT_OFFLOAD(iv[iv[i]] != int(i));
       });
       alpaka::syncBlockThreads(acc);
 #endif
@@ -154,7 +156,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       //  mini verification
       cms::alpakatools::for_each_element_in_block_strided(acc, nt, [&](uint32_t i) {
         if (iv[i] != int(i))
-          assert(iv[iv[i]] != int(i));
+          ALPAKA_ASSERT_OFFLOAD(iv[iv[i]] != int(i));
       });
 #endif
 
@@ -178,8 +180,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         };
         cms::alpakatools::forEachInBins(hist, izt[i], 1, loop);
         // should belong to the same cluster...
-        assert(iv[i] == iv[minJ]);
-        assert(nn[i] <= nn[iv[i]]);
+        ALPAKA_ASSERT_OFFLOAD(iv[i] == iv[minJ]);
+        ALPAKA_ASSERT_OFFLOAD(nn[i] <= nn[iv[i]]);
       });
       alpaka::syncBlockThreads(acc);
 #endif
@@ -193,7 +195,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       cms::alpakatools::for_each_element_in_block_strided(acc, nt, [&](uint32_t i) {
         if (iv[i] == int(i)) {
           if (nn[i] >= minT) {
-            auto old = alpaka::atomicInc(acc, &foundClusters, 0xffffffff, alpaka::hierarchy::Blocks{});
+            auto old = alpaka::atomicInc(acc, &foundClusters, 0xffffffff, alpaka::hierarchy::Threads{});
             iv[i] = -(old + 1);
           } else {  // noise
             iv[i] = -9998;
@@ -202,7 +204,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       });
       alpaka::syncBlockThreads(acc);
 
-      assert(foundClusters < ZVertices::MAXVTX);
+      ALPAKA_ASSERT_OFFLOAD(foundClusters < ZVertices::MAXVTX);
 
       // propagate the negative id to all the tracks in the cluster.
       cms::alpakatools::for_each_element_in_block_strided(acc, nt, [&](uint32_t i) {
@@ -223,8 +225,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     }
 
     struct clusterTracksByDensityKernel {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     gpuVertexFinder::ZVertices* pdata,
                                     gpuVertexFinder::WorkSpace* pws,
                                     int minT,      // min number of neighbours to be "seed"
@@ -240,4 +242,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoPixelVertexing_PixelVertexFinding_src_gpuClusterTracksByDensity_h
+#endif  // plugin_PixelVertexFinding_alpaka_gpuClusterTracksByDensity_h

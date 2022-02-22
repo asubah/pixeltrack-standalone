@@ -1,5 +1,9 @@
-#include "AlpakaDataFormats/BeamSpotAlpaka.h"
+#include <utility>
 
+#include "AlpakaCore/Product.h"
+#include "AlpakaCore/ScopedContext.h"
+#include "AlpakaCore/alpakaMemory.h"
+#include "AlpakaDataFormats/alpaka/BeamSpotAlpaka.h"
 #include "Framework/EDProducer.h"
 #include "Framework/Event.h"
 #include "Framework/EventSetup.h"
@@ -15,24 +19,24 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     void produce(edm::Event& iEvent, const edm::EventSetup& iSetup) override;
 
   private:
-    edm::EDPutTokenT<BeamSpotAlpaka> bsPutToken_;
-    // TO DO: Add implementation of cms::alpaka::Product?
-    // const edm::EDPutTokenT<cms::alpaka::Product<BeamSpotAlpaka>> bsPutToken_;
+    const edm::EDPutTokenT<cms::alpakatools::Product<Queue, BeamSpotAlpaka>> bsPutToken_;
+
+    cms::alpakatools::host_buffer<BeamSpotPOD> bsHost_;
   };
 
-  BeamSpotToAlpaka::BeamSpotToAlpaka(edm::ProductRegistry& reg) : bsPutToken_{reg.produces<BeamSpotAlpaka>()} {}
+  BeamSpotToAlpaka::BeamSpotToAlpaka(edm::ProductRegistry& reg)
+      : bsPutToken_{reg.produces<cms::alpakatools::Product<Queue, BeamSpotAlpaka>>()},
+        bsHost_{cms::alpakatools::make_host_buffer<BeamSpotPOD>()} {}
 
   void BeamSpotToAlpaka::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
-    auto const& bsRaw = iSetup.get<BeamSpotPOD>();
+    *bsHost_ = iSetup.get<BeamSpotPOD>();
 
-    // TO DO: Add inter-event parallelization. cms::alpaka::ScopedContextProduce?
-    // cms::alpaka::ScopedContextProduce ctx{iEvent.streamID()};
-    Queue queue(device);
-    BeamSpotAlpaka bs{&bsRaw, queue};
+    cms::alpakatools::ScopedContextProduce<Queue> ctx{iEvent.streamID()};
 
-    iEvent.emplace(bsPutToken_, std::move(bs));
+    BeamSpotAlpaka bsDevice(ctx.stream());
+    alpaka::memcpy(ctx.stream(), bsDevice.buf(), bsHost_);
 
-    alpaka::wait(queue);
+    ctx.emplace(iEvent, bsPutToken_, std::move(bsDevice));
   }
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE

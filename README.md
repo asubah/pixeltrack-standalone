@@ -8,6 +8,7 @@
   * [Additional make targets](#additional-make-targets)
   * [Test program specific notes (if any)](#test-program-specific-notes-if-any)
     * [`fwtest`](#fwtest)
+    * [`serial`](#serial)
     * [`cudatest`](#cudatest)
     * [`cuda`](#cuda)
     * [`cudadev`](#cudadev)
@@ -29,7 +30,7 @@ tracking application. The version here corresponds to
 
 The application is designed to require minimal dependencies on the system. All programs require
 * GNU Make, `curl`, `md5sum`, `tar`
-* C++17 capable compiler. For programs using CUDA that must work with `nvcc`, in the current setup this means GCC 8, 9 or 10
+* C++17 capable compiler. For programs using CUDA that must work with `nvcc`, this means GCC 8, 9, 10 or 11 (since CUDA 11.4.1).
   * testing is currently done with GCC 8
   * not that due to a bug in GCC, GCC 10.3 is not supported
 
@@ -61,6 +62,7 @@ All other dependencies (listed below) are downloaded and built automatically
 | Application  | [TBB](https://github.com/intel/tbb) | [Eigen](http://eigen.tuxfamily.org/) | [Kokkos](https://github.com/kokkos/kokkos) | [Boost](https://www.boost.org/) (1) | [Alpaka](https://github.com/alpaka-group/alpaka) | [libbacktrace](https://github.com/ianlancetaylor/libbacktrace) | [hwloc](https://www.open-mpi.org/projects/hwloc/) |
 |--------------|-------------------------------------|--------------------------------------|--------------------------------------------|-------------------------------------|--------------------------------------------------|----------------------------------------------------------------|---------------------------------------------------|
 | `fwtest`     | :heavy_check_mark:                  |                                      |                                            |                                     |                                                  |                                                                |                                                   |
+| `serial`     | :heavy_check_mark:                  | :heavy_check_mark:                   |                                            | :heavy_check_mark:                  |                                                  | :heavy_check_mark:                                             |                                                   |
 | `cudatest`   | :heavy_check_mark:                  |                                      |                                            | :heavy_check_mark:                  |                                                  | :heavy_check_mark:                                             |                                                   |
 | `cuda`       | :heavy_check_mark:                  | :heavy_check_mark:                   |                                            | :heavy_check_mark:                  |                                                  | :heavy_check_mark:                                             |                                                   |
 | `cudadev`    | :heavy_check_mark:                  | :heavy_check_mark:                   |                                            | :heavy_check_mark:                  |                                                  | :heavy_check_mark:                                             |                                                   |
@@ -75,7 +77,7 @@ All other dependencies (listed below) are downloaded and built automatically
 | `sycltest`   | :heavy_check_mark:                  |                                      |                                            |                                     |                                                  |                                                                |                                                   |
 
 
-1. Boost libraries from the system can also be used, but they need to be newer than 1.65.1
+1. Boost libraries from the system can also be used, but they need to be version 1.73.0 or newer
 2. `kokkos` and `kokkostest` have an optional dependence on hwloc, by default it is not required (see [`kokkos` and `kokkostest`](#kokkos-and-kokkostest) for more details)
 
 The input data set consists of a minimal binary dump of 1000 events of
@@ -85,16 +87,48 @@ dataset from the [CMS](https://cms.cern/)
 [Open Data](http://opendata.cern.ch/docs/about-cms). The data are
 downloaded automatically during the build process.
 
+### Newer GCC versions
+
+RHEL 7.x / CentOS 7.x use GCC 4.8 as their system compiler.
+More recent versions can be used from the "Developer Toolset" software collections:
+```bash
+# list available software collections
+$ scl -l
+devtoolset-9
+
+# load the GCC 9.x environment
+$ source scl_source enable devtoolset-9
+$ gcc --version
+gcc (GCC) 9.3.1 20200408 (Red Hat 9.3.1-2)
+Copyright (C) 2019 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+```
+
+Various versions of GCC are also available from the SFT CVMFS area, for example:
+```bash
+$ source /cvmfs/sft.cern.ch/lcg/contrib/gcc/8.3.0/x86_64-centos7/setup.sh
+$ $ gcc --version
+gcc (GCC) 8.3.0
+Copyright (C) 2018 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+```
+
+RHEL 8.x / CentOS 8.x use GCC 8 as their system compiler.
+
+
 ## Status
 
 | Application  | Description                      | Framework          | Device framework   | Test code          | Raw2Cluster        | RecHit             | Pixel tracking     | Vertex             | Transfers to CPU   | Validation code    | Validated          |
 |--------------|----------------------------------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|--------------------|
 | `fwtest`     | Framework test                   | :heavy_check_mark: |                    | :heavy_check_mark: |                    |                    |                    |                    |                    |                    |                    |
+| `serial`     | CPU version (via `cudaCompat`)   | :heavy_check_mark: |                    |                    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
 | `cudatest`   | CUDA FW test                     | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |                    |                    |                    |                    |                    |                    |                    |
 | `cuda`       | CUDA version (frozen)            | :heavy_check_mark: | :heavy_check_mark: |                    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
 | `cudadev`    | CUDA version (development)       | :heavy_check_mark: | :heavy_check_mark: |                    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
 | `cudauvm`    | CUDA version with managed memory | :heavy_check_mark: | :heavy_check_mark: |                    | :heavy_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
-| `cudacompat` | CPU version (with `cudaCompat`)  | :heavy_check_mark: | :heavy_check_mark: |                    | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |
+| `cudacompat` | `cudaCompat` version             | :heavy_check_mark: | :heavy_check_mark: |                    | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :heavy_check_mark: |
 | `hiptest`    | HIP FW test                      | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |                    |                    |                    |                    |                    |                    |                    |
 | `hip`        | HIP version                      | :heavy_check_mark: | :heavy_check_mark: |                    | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: | :white_check_mark: |                    |
 | `kokkostest` | Kokkos FW test                   | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: |                    |                    |                    |                    |                    |                    |                    |
@@ -170,6 +204,14 @@ The printouts can be disabled at compile with with
 ```
 make fwtest ... USER_CXXFLAGS="-DFWTEST_SILENT"
 ```
+
+#### `serial`
+
+This program is a fork of `cudacompat` by removing all dependencies to
+CUDA in order to be a "pure CPU" version. Note that the name refers to
+(the absence of) intra-algorithm parallelization and is thus
+comparable to the Serial backend of Alpaka or Kokkos. The event-level
+parallelism is implemented as in `fwtest`.
 
 #### `cudatest`
 
@@ -321,6 +363,25 @@ $ make kokkos ...
 |----------------------------------------|-------------------------------------------------------------------|
 | `-DKOKKOS_SERIALONLY_DISABLE_ATOMICS`  | Disable Kokkos (real) atomics, can be used with Serial-only build |
 
+
+#### `alpaka`
+
+The `alpaka` code base is loosely based on the `cuda` code base, with some minor changes introduced during the porting.
+
+The use of caching allocator can be disabled at compile time setting the
+`ALPAKA_DISABLE_CACHING_ALLOCATOR` preprocessor symbol:
+```
+make alpaka ... USER_CXXFLAGS="-DALPAKA_DISABLE_CACHING_ALLOCATOR"
+```
+
+If the caching allocator is disabled and CUDA version is 11.2 or greater is detected,
+device allocations and deallocations will use the stream-ordered CUDA functions
+`cudaMallocAsync` and `cudaFreeAsync`. Their use can be disabled explicitly at
+compile time setting also the `ALPAKA_DISABLE_ASYNC_ALLOCATOR` preprocessor symbol:
+
+```
+make alpaka ... USER_CXXFLAGS="-DALPAKA_DISABLE_CACHING_ALLOCATOR -DALPAKA_DISABLE_ASYNC_ALLOCATOR"
+```
 
 ## Code structure
 

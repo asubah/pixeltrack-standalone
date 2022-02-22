@@ -1,12 +1,11 @@
-#include "AlpakaCore/alpakaCommon.h"
-
-#include "AlpakaDataFormats/PixelTrackAlpaka.h"
-#include "AlpakaDataFormats/ZVertexAlpaka.h"
-
-#include "Framework/EventSetup.h"
-#include "Framework/Event.h"
-#include "Framework/PluginFactory.h"
+#include "AlpakaCore/ScopedContext.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaDataFormats/alpaka/PixelTrackAlpaka.h"
+#include "AlpakaDataFormats/alpaka/ZVertexAlpaka.h"
 #include "Framework/EDProducer.h"
+#include "Framework/Event.h"
+#include "Framework/EventSetup.h"
+#include "Framework/PluginFactory.h"
 #include "Framework/RunningAverage.h"
 
 #include "gpuVertexFinder.h"
@@ -21,8 +20,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   private:
     void produce(edm::Event& iEvent, const edm::EventSetup& iSetup) override;
 
-    edm::EDGetTokenT<PixelTrackAlpaka> tokenTrack_;
-    edm::EDPutTokenT<ZVertexAlpaka> tokenVertex_;
+    edm::EDGetTokenT<cms::alpakatools::Product<Queue, PixelTrackAlpaka>> tokenTrack_;
+    edm::EDPutTokenT<cms::alpakatools::Product<Queue, ZVertexAlpaka>> tokenVertex_;
 
     const gpuVertexFinder::Producer m_gpuAlgo;
 
@@ -31,8 +30,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   PixelVertexProducerAlpaka::PixelVertexProducerAlpaka(edm::ProductRegistry& reg)
-      : tokenTrack_(reg.consumes<PixelTrackAlpaka>()),
-        tokenVertex_(reg.produces<ZVertexAlpaka>()),
+      : tokenTrack_(reg.consumes<cms::alpakatools::Product<Queue, PixelTrackAlpaka>>()),
+        tokenVertex_(reg.produces<cms::alpakatools::Product<Queue, ZVertexAlpaka>>()),
         m_gpuAlgo(true,   // oneKernel
                   true,   // useDensity
                   false,  // useDBSCAN
@@ -46,11 +45,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   {}
 
   void PixelVertexProducerAlpaka::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
-    auto const& tracksBuf = iEvent.get(tokenTrack_);
-    auto const tracks = alpaka::getPtrNative(tracksBuf);
-
-    Queue queue(device);
-    iEvent.emplace(tokenVertex_, m_gpuAlgo.makeAsync(tracks, m_ptMin, queue));
+    cms::alpakatools::Product<Queue, PixelTrackAlpaka> const& tracksWrapped = iEvent.get(tokenTrack_);
+    cms::alpakatools::ScopedContextProduce<Queue> ctx{tracksWrapped};
+    auto const& tracks = ctx.get(tracksWrapped);
+    ctx.emplace(iEvent, tokenVertex_, m_gpuAlgo.makeAsync(tracks.data(), m_ptMin, ctx.stream()));
   }
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE

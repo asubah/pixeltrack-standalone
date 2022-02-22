@@ -1,9 +1,8 @@
-#ifndef RecoPixelVertexing_PixelVertexFinding_src_gpuSplitVertices_h
-#define RecoPixelVertexing_PixelVertexFinding_src_gpuSplitVertices_h
-
-#include "AlpakaCore/alpakaKernelCommon.h"
+#ifndef plugin_PixelVertexFinding_alpaka_gpuSplitVertices_h
+#define plugin_PixelVertexFinding_alpaka_gpuSplitVertices_h
 
 #include "AlpakaCore/HistoContainer.h"
+#include "AlpakaCore/alpakaConfig.h"
 
 #include "gpuVertexFinder.h"
 
@@ -11,8 +10,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   namespace gpuVertexFinder {
 
-    template <typename T_Acc>
-    ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) void splitVertices(const T_Acc& acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) void splitVertices(const TAcc& acc,
                                                                                      ZVertices* pdata,
                                                                                      WorkSpace* pws,
                                                                                      float maxChi2) {
@@ -33,12 +32,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       int32_t const* __restrict__ nn = data.ndof;
       int32_t* __restrict__ iv = ws.iv;
 
-      assert(pdata);
-      assert(zt);
+      ALPAKA_ASSERT_OFFLOAD(pdata);
+      ALPAKA_ASSERT_OFFLOAD(zt);
 
-      constexpr uint32_t MAXTK = 512;
       // NB: Shared memory size? Is it enough?
-#ifdef ALPAKA_ACC_GPU_CUDA_ENABLED
+      constexpr uint32_t MAXTK = 512;
+#ifdef ALPAKA_ACC_GPU_CUDA_ASYNC_BACKEND
       auto& it = alpaka::declareSharedVar<uint32_t[MAXTK], __COUNTER__>(acc);   // track index
       auto& zz = alpaka::declareSharedVar<float[MAXTK], __COUNTER__>(acc);      // z pos
       auto& newV = alpaka::declareSharedVar<uint8_t[MAXTK], __COUNTER__>(acc);  // 0 or 1
@@ -60,7 +59,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         if (chi2[kv] < maxChi2 * float(nn[kv]))
           continue;
 
-        assert((uint32_t)nn[kv] < MAXTK);
+        ALPAKA_ASSERT_OFFLOAD((uint32_t)nn[kv] < MAXTK);
 
         if ((uint32_t)nn[kv] >= MAXTK)
           continue;
@@ -72,7 +71,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         // copy to local
         cms::alpakatools::for_each_element_in_block_strided(acc, nt, [&](uint32_t k) {
           if (iv[k] == int(kv)) {
-            auto old = alpaka::atomicInc(acc, &nq, MAXTK, alpaka::hierarchy::Blocks{});
+            auto old = alpaka::atomicInc(acc, &nq, MAXTK, alpaka::hierarchy::Threads{});
             zz[old] = zt[k] - zv[kv];
             newV[old] = zz[old] < 0 ? 0 : 1;
             ww[old] = 1.f / ezt2[k];
@@ -85,7 +84,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         auto& wnew = alpaka::declareSharedVar<float[2], __COUNTER__>(acc);
         alpaka::syncBlockThreads(acc);
 
-        assert(int(nq) == nn[kv] + 1);
+        ALPAKA_ASSERT_OFFLOAD(int(nq) == nn[kv] + 1);
 
         int maxiter = 20;
         // kt-min....
@@ -102,8 +101,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
           cms::alpakatools::for_each_element_in_block_strided(acc, nq, [&](uint32_t k) {
             auto i = newV[k];
-            alpaka::atomicAdd(acc, &znew[i], zz[k] * ww[k], alpaka::hierarchy::Blocks{});
-            alpaka::atomicAdd(acc, &wnew[i], ww[k], alpaka::hierarchy::Blocks{});
+            alpaka::atomicAdd(acc, &znew[i], zz[k] * ww[k], alpaka::hierarchy::Threads{});
+            alpaka::atomicAdd(acc, &wnew[i], ww[k], alpaka::hierarchy::Threads{});
           });
           alpaka::syncBlockThreads(acc);
 
@@ -153,8 +152,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     }
 
     struct splitVerticesKernel {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc, ZVertices* pdata, WorkSpace* pws, float maxChi2) const {
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc, ZVertices* pdata, WorkSpace* pws, float maxChi2) const {
         splitVertices(acc, pdata, pws, maxChi2);
       }
     };
@@ -163,4 +162,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoPixelVertexing_PixelVertexFinding_src_gpuSplitVertices_h
+#endif  // plugin_PixelVertexFinding_alpaka_gpuSplitVertices_h

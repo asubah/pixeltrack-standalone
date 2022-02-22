@@ -1,5 +1,5 @@
-#ifndef EventProcessor_h
-#define EventProcessor_h
+#ifndef bin_EventProcessor_h
+#define bin_EventProcessor_h
 
 #include <filesystem>
 #include <string>
@@ -15,6 +15,7 @@ namespace edm {
   class EventProcessor {
   public:
     explicit EventProcessor(int maxEvents,
+                            int runForMinutes,
                             int numberOfStreams,
                             std::vector<std::string> const& path,
                             std::vector<std::string> const& esproducers,
@@ -22,6 +23,7 @@ namespace edm {
                             bool validation);
 
     int maxEvents() const { return source_.maxEvents(); }
+    int processedEvents() const { return source_.processedEvents(); }
 
     void runToCompletion();
 
@@ -36,4 +38,4 @@ namespace edm {
   };
 }  // namespace edm
 
-#endif
+#endif  // bin_EventProcessor_h

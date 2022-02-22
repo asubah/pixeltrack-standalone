@@ -1,5 +1,5 @@
-#ifndef RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelDoublets_h
-#define RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelDoublets_h
+#ifndef plugin_PixelTriplets_alpaka_gpuPixelDoublets_h
+#define plugin_PixelTriplets_alpaka_gpuPixelDoublets_h
 
 #include "gpuPixelDoubletsAlgos.h"
 
@@ -65,15 +65,15 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     using CellTracksVector = CAConstants::CellTracksVector;
 
     struct initDoublets {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     GPUCACell::OuterHitOfCell* isOuterHitOfCell,
                                     int nHits,
                                     CellNeighborsVector* cellNeighbors,
                                     CellNeighbors* cellNeighborsContainer,
                                     CellTracksVector* cellTracks,
                                     CellTracks* cellTracksContainer) const {
-        assert(isOuterHitOfCell);
+        ALPAKA_ASSERT_OFFLOAD(isOuterHitOfCell);
         cms::alpakatools::for_each_element_in_grid_strided(
             acc, nHits, [&](uint32_t i) { isOuterHitOfCell[i].reset(); });
 
@@ -81,13 +81,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         if (0 == threadIdx) {
           cellNeighbors->construct(CAConstants::maxNumOfActiveDoublets(), cellNeighborsContainer);
           cellTracks->construct(CAConstants::maxNumOfActiveDoublets(), cellTracksContainer);
-          auto i = cellNeighbors->extend(
-              acc);  // NB: Increases cellNeighbors size by 1, returns previous size which should be 0.
-          assert(0 == i);
+          // NB: Increases cellNeighbors size by 1, returns previous size which should be 0.
+          [[maybe_unused]] auto i = cellNeighbors->extend(acc);
+          ALPAKA_ASSERT_OFFLOAD(0 == i);
           (*cellNeighbors)[0].reset();
-          auto ii =
-              cellTracks->extend(acc);  // NB: Increases cellTracks size by 1, returns previous size which should be 0.
-          assert(0 == ii);
+          // NB: Increases cellTracks size by 1, returns previous size which should be 0
+          [[maybe_unused]] auto ii = cellTracks->extend(acc);
+          ALPAKA_ASSERT_OFFLOAD(0 == ii);
           (*cellTracks)[0].reset();
         }
       }  // initDoublets kernel operator()
@@ -101,13 +101,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   #endif*/
     // TO DO: NB: Alpaka equivalent for this does not seem to exit.
     struct getDoubletsFromHisto {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     GPUCACell* cells,
                                     uint32_t* nCells,
                                     CellNeighborsVector* cellNeighbors,
                                     CellTracksVector* cellTracks,
-                                    TrackingRecHit2DSOAView const* __restrict__ hhp,
+                                    TrackingRecHit2DSoAView const* __restrict__ hhp,
                                     GPUCACell::OuterHitOfCell* isOuterHitOfCell,
                                     int nActualPairs,
                                     bool ideal_cond,
@@ -140,4 +140,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   }  // namespace gpuPixelDoublets
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelDouplets_h
+#endif  // plugin_PixelTriplets_alpaka_gpuPixelDoublets_h

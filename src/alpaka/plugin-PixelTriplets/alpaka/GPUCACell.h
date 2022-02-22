@@ -1,5 +1,5 @@
-#ifndef RecoPixelVertexing_PixelTriplets_plugins_GPUCACell_h
-#define RecoPixelVertexing_PixelTriplets_plugins_GPUCACell_h
+#ifndef plugin_PixelTriplets_alpaka_GPUCACell_h
+#define plugin_PixelTriplets_alpaka_GPUCACell_h
 
 //
 // Author: Felice Pantaleo, CERN
@@ -7,14 +7,17 @@
 
 // #define ONLY_TRIPLETS_IN_HOLE
 
-#include "AlpakaCore/alpakaCommon.h"
-#include "AlpakaCore/threadfence.h"
+#include <cmath>
+#include <limits>
+
 #include "AlpakaCore/SimpleVector.h"
 #include "AlpakaCore/VecArray.h"
-#include "AlpakaDataFormats/PixelTrackAlpaka.h"
-#include "AlpakaDataFormats/TrackingRecHit2DAlpaka.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaCore/threadfence.h"
+#include "AlpakaDataFormats/alpaka/PixelTrackAlpaka.h"
+#include "AlpakaDataFormats/alpaka/TrackingRecHit2DAlpaka.h"
 
-#include "CAConstants.h"
+#include "../CAConstants.h"
 #include "../CircleEq.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
@@ -30,7 +33,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     using CellNeighborsVector = CAConstants::CellNeighborsVector;
     using CellTracksVector = CAConstants::CellTracksVector;
 
-    using Hits = ALPAKA_ACCELERATOR_NAMESPACE::TrackingRecHit2DSOAView;
+    using Hits = TrackingRecHit2DSoAView;
     using hindex_type = Hits::hindex_type;
 
     using TmpTuple = cms::alpakatools::VecArray<uint32_t, 6>;
@@ -61,20 +64,21 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       // link to default empty
       theOuterNeighbors = &cellNeighbors[0];
       theTracks = &cellTracks[0];
-      assert(outerNeighbors().empty());
-      assert(tracks().empty());
+      ALPAKA_ASSERT_OFFLOAD(outerNeighbors().empty());
+      ALPAKA_ASSERT_OFFLOAD(tracks().empty());
     }
 
-    template <typename T_Acc>
+    template <typename TAcc>
     ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) int addOuterNeighbor(
-        const T_Acc& acc, CellNeighbors::value_t t, CellNeighborsVector& cellNeighbors) {
+        const TAcc& acc, CellNeighbors::value_t t, CellNeighborsVector& cellNeighbors) {
       // use smart cache
       if (outerNeighbors().empty()) {
         auto i = cellNeighbors.extend(acc);  // maybe waisted....
         if (i > 0) {
           cellNeighbors[i].reset();
+          cms::alpakatools::threadfence(acc);
+#ifdef ALPAKA_ACC_CPU_B_SEQ_T_SEQ_SYNC_BACKEND
           // Serial case does not behave properly otherwise (also observed in Kokkos)
-#ifdef ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED
           theOuterNeighbors = &cellNeighbors[i];
 #else
           auto zero = (ptrAsInt)(&cellNeighbors[0]);
@@ -92,16 +96,17 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       return outerNeighbors().push_back(acc, t);
     }
 
-    template <typename T_Acc>
-    ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) int addTrack(const T_Acc& acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) int addTrack(const TAcc& acc,
                                                                                CellTracks::value_t t,
                                                                                CellTracksVector& cellTracks) {
       if (tracks().empty()) {
         auto i = cellTracks.extend(acc);  // maybe waisted....
         if (i > 0) {
           cellTracks[i].reset();
+          cms::alpakatools::threadfence(acc);
+#ifdef ALPAKA_ACC_CPU_B_SEQ_T_SEQ_SYNC_BACKEND
           // Serial case does not behave properly otherwise (also observed in Kokkos)
-#ifdef ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED
           theTracks = &cellTracks[i];
 #else
           auto zero = (ptrAsInt)(&cellTracks[0]);
@@ -323,8 +328,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
     // trying to free the track building process from hardcoded layers, leaving
     // the visit of the graph based on the neighborhood connections between cells.
-    template <typename T_Acc>
-    ALPAKA_FN_ACC ALPAKA_FN_INLINE void find_ntuplets(const T_Acc& acc,
+    template <int DEPTH, typename TAcc>
+    ALPAKA_FN_ACC ALPAKA_FN_INLINE void find_ntuplets(const TAcc& acc,
                                                       Hits const& hh,
                                                       GPUCACell* __restrict__ cells,
                                                       CellTracksVector& cellTracks,
@@ -334,49 +339,54 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                                       TmpTuple& tmpNtuplet,
                                                       const unsigned int minHitsPerNtuplet,
                                                       bool startAt0) const {
-      // the building process for a track ends if:
-      // it has no right neighbor
-      // it has no compatible neighbor
-      // the ntuplets is then saved if the number of hits it contains is greater
-      // than a threshold
+      if constexpr (DEPTH == 0) {
+        printf("ERROR: GPUCACell::find_ntuplets reached full depth!\n");
+        ALPAKA_ASSERT_OFFLOAD(false);
+      } else {
+        // the building process for a track ends if:
+        // it has no right neighbor
+        // it has no compatible neighbor
+        // the ntuplets is then saved if the number of hits it contains is greater
+        // than a threshold
 
-      tmpNtuplet.push_back_unsafe(theDoubletId);
-      assert(tmpNtuplet.size() <= 4);
+        tmpNtuplet.push_back_unsafe(theDoubletId);
+        ALPAKA_ASSERT_OFFLOAD(tmpNtuplet.size() <= 4);
 
-      bool last = true;
-      for (int j = 0; j < outerNeighbors().size(); ++j) {
-        auto otherCell = outerNeighbors()[j];
-        if (cells[otherCell].theDoubletId < 0)
-          continue;  // killed by earlyFishbone
-        last = false;
-        cells[otherCell].find_ntuplets(
-            acc, hh, cells, cellTracks, foundNtuplets, apc, quality, tmpNtuplet, minHitsPerNtuplet, startAt0);
-      }
-      if (last) {  // if long enough save...
-        if ((unsigned int)(tmpNtuplet.size()) >= minHitsPerNtuplet - 1) {
+        bool last = true;
+        for (int j = 0; j < outerNeighbors().size(); ++j) {
+          auto otherCell = outerNeighbors()[j];
+          if (cells[otherCell].theDoubletId < 0)
+            continue;  // killed by earlyFishbone
+          last = false;
+          cells[otherCell].find_ntuplets<DEPTH - 1>(
+              acc, hh, cells, cellTracks, foundNtuplets, apc, quality, tmpNtuplet, minHitsPerNtuplet, startAt0);
+        }
+        if (last) {  // if long enough save...
+          if ((unsigned int)(tmpNtuplet.size()) >= minHitsPerNtuplet - 1) {
 #ifdef ONLY_TRIPLETS_IN_HOLE
-          // triplets accepted only pointing to the hole
-          if (tmpNtuplet.size() >= 3 || (startAt0 && hole4(hh, cells[tmpNtuplet[0]])) ||
-              ((!startAt0) && hole0(hh, cells[tmpNtuplet[0]])))
+            // triplets accepted only pointing to the hole
+            if (tmpNtuplet.size() >= 3 || (startAt0 && hole4(hh, cells[tmpNtuplet[0]])) ||
+                ((!startAt0) && hole0(hh, cells[tmpNtuplet[0]])))
 #endif
-          {
-            hindex_type hits[6];
-            auto nh = 0U;
-            for (auto c : tmpNtuplet) {
-              hits[nh++] = cells[c].theInnerHitId;
-            }
-            hits[nh] = theOuterHitId;
-            auto it = foundNtuplets.bulkFill(acc, apc, hits, tmpNtuplet.size() + 1);
-            if (it >= 0) {  // if negative is overflow....
-              for (auto c : tmpNtuplet)
-                cells[c].addTrack(acc, it, cellTracks);
-              quality[it] = bad;  // initialize to bad
+            {
+              hindex_type hits[6];
+              auto nh = 0U;
+              for (auto c : tmpNtuplet) {
+                hits[nh++] = cells[c].theInnerHitId;
+              }
+              hits[nh] = theOuterHitId;
+              auto it = foundNtuplets.bulkFill(acc, apc, hits, tmpNtuplet.size() + 1);
+              if (it >= 0) {  // if negative is overflow....
+                for (auto c : tmpNtuplet)
+                  cells[c].addTrack(acc, it, cellTracks);
+                quality[it] = bad;  // initialize to bad
+              }
             }
           }
         }
+        tmpNtuplet.pop_back();
+        ALPAKA_ASSERT_OFFLOAD(tmpNtuplet.size() < 4);
       }
-      tmpNtuplet.pop_back();
-      assert(tmpNtuplet.size() < 4);
     }
 
   private:
@@ -394,7 +404,6 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     hindex_type theInnerHitId;
     hindex_type theOuterHitId;
   };
-
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoPixelVertexing_PixelTriplets_plugins_GPUCACell_h
+#endif  // plugin_PixelTriplets_alpaka_GPUCACell_h

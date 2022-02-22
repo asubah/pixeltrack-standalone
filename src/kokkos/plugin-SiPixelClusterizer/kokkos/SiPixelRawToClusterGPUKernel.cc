@@ -33,16 +33,16 @@ namespace KOKKOS_NAMESPACE {
   namespace pixelgpudetails {
     constexpr uint32_t MAX_FED_WORDS = ::pixelgpudetails::MAX_FED * ::pixelgpudetails::MAX_WORD;
 
-    SiPixelRawToClusterGPUKernel::WordFedAppender::WordFedAppender()
-        : word_(Kokkos::ViewAllocateWithoutInitializing("word"), MAX_FED_WORDS),
-          fedId_(Kokkos::ViewAllocateWithoutInitializing("fedId"), MAX_FED_WORDS) {}
+    SiPixelRawToClusterGPUKernel::WordFedAppender::WordFedAppender(KokkosExecSpace const &execSpace)
+        : word_(cms::kokkos::make_shared<unsigned int[], KokkosHostMemSpace>(MAX_FED_WORDS, execSpace)),
+          fedId_(cms::kokkos::make_shared<unsigned char[], KokkosHostMemSpace>(MAX_FED_WORDS, execSpace)) {}
 
     void SiPixelRawToClusterGPUKernel::WordFedAppender::initializeWordFed(int fedId,
                                                                           unsigned int wordCounterGPU,
                                                                           const uint32_t *src,
                                                                           unsigned int length) {
-      std::memcpy(word_.data() + wordCounterGPU, src, sizeof(uint32_t) * length);
-      std::memset(fedId_.data() + wordCounterGPU / 2, fedId - 1200, length / 2);
+      std::memcpy(word_.get() + wordCounterGPU, src, sizeof(uint32_t) * length);
+      std::memset(fedId_.get() + wordCounterGPU / 2, fedId - 1200, length / 2);
     }
 
     ////////////////////
@@ -351,22 +351,23 @@ namespace KOKKOS_NAMESPACE {
 
     // Kernel to perform Raw to Digi conversion
     // TODO: in principle could use restrict here
-    KOKKOS_FUNCTION void RawToDigi_kernel(const Kokkos::View<const SiPixelFedCablingMapGPU, KokkosExecSpace> &cablingMap,
-                                          const Kokkos::View<const unsigned char *, KokkosExecSpace> &modToUnp,
-                                          const uint32_t wordCounter,
-                                          const Kokkos::View<unsigned int const *, KokkosExecSpace> &word,
-                                          const Kokkos::View<uint8_t const *, KokkosExecSpace> &fedIds,
-                                          const Kokkos::View<uint16_t *, KokkosExecSpace> &xx,
-                                          const Kokkos::View<uint16_t *, KokkosExecSpace> &yy,
-                                          const Kokkos::View<uint16_t *, KokkosExecSpace> &adc,
-                                          const Kokkos::View<uint32_t *, KokkosExecSpace> &pdigi,
-                                          const Kokkos::View<uint32_t *, KokkosExecSpace> &rawIdArr,
-                                          const Kokkos::View<uint16_t *, KokkosExecSpace> &moduleId,
-                                          cms::kokkos::SimpleVector<PixelErrorCompact> *err,
-                                          const bool useQualityInfo,
-                                          const bool includeErrors,
-                                          const bool debug,
-                                          const size_t gIndex) {
+    KOKKOS_FUNCTION void RawToDigi_kernel(
+        const Kokkos::View<const SiPixelFedCablingMapGPU, KokkosDeviceMemSpace, Restrict> &cablingMap,
+        const Kokkos::View<const unsigned char *, KokkosDeviceMemSpace, Restrict> &modToUnp,
+        const uint32_t wordCounter,
+        const Kokkos::View<unsigned int const *, KokkosDeviceMemSpace, RestrictUnmanaged> &word,
+        const Kokkos::View<uint8_t const *, KokkosDeviceMemSpace, RestrictUnmanaged> &fedIds,
+        const Kokkos::View<uint16_t *, KokkosDeviceMemSpace, RestrictUnmanaged> &xx,
+        const Kokkos::View<uint16_t *, KokkosDeviceMemSpace, RestrictUnmanaged> &yy,
+        const Kokkos::View<uint16_t *, KokkosDeviceMemSpace, RestrictUnmanaged> &adc,
+        const Kokkos::View<uint32_t *, KokkosDeviceMemSpace, RestrictUnmanaged> &pdigi,
+        const Kokkos::View<uint32_t *, KokkosDeviceMemSpace, RestrictUnmanaged> &rawIdArr,
+        const Kokkos::View<uint16_t *, KokkosDeviceMemSpace, RestrictUnmanaged> &moduleId,
+        cms::kokkos::SimpleVector<PixelErrorCompact> *err,
+        const bool useQualityInfo,
+        const bool includeErrors,
+        const bool debug,
+        const size_t gIndex) {
       xx[gIndex] = 0;
       yy[gIndex] = 0;
       adc[gIndex] = 0;
@@ -472,9 +473,9 @@ namespace KOKKOS_NAMESPACE {
 }  // namespace KOKKOS_NAMESPACE
 
 namespace pixelgpudetails {
-  template <typename ExecSpace>
-  void fillHitsModuleStart(const Kokkos::View<uint32_t const *, ExecSpace> &cluStart,
-                           const Kokkos::View<uint32_t *, ExecSpace> &moduleStart,
+  template <typename MemSpace, typename ExecSpace>
+  void fillHitsModuleStart(const Kokkos::View<uint32_t const *, MemSpace, RestrictUnmanaged> &cluStart,
+                           const Kokkos::View<uint32_t *, MemSpace, RestrictUnmanaged> &moduleStart,
                            ExecSpace const &execSpace) {
     assert(gpuClustering::MaxNumModules < 2048);  // easy to extend at least till 32*1024
 
@@ -559,9 +560,9 @@ namespace KOKKOS_NAMESPACE {
     // Interface to outside
     void SiPixelRawToClusterGPUKernel::makeClustersAsync(
         bool isRun2,
-        const Kokkos::View<const SiPixelFedCablingMapGPU, KokkosExecSpace> &cablingMap,
-        const Kokkos::View<const unsigned char *, KokkosExecSpace> &modToUnp,
-        const SiPixelGainForHLTonGPU<KokkosExecSpace> &gains,
+        const Kokkos::View<const SiPixelFedCablingMapGPU, KokkosDeviceMemSpace, Restrict> &cablingMap,
+        const Kokkos::View<const unsigned char *, KokkosDeviceMemSpace, Restrict> &modToUnp,
+        const SiPixelGainForHLTonGPU<KokkosDeviceMemSpace> &gains,
         const WordFedAppender &wordFed,
         PixelFormatterErrors &&errors,
         const uint32_t wordCounter,
@@ -576,12 +577,12 @@ namespace KOKKOS_NAMESPACE {
       std::cout << "decoding " << wordCounter << " digis. Max is " << pixelgpudetails::MAX_FED_WORDS << std::endl;
 #endif
 
-      digis_d = SiPixelDigisKokkos<KokkosExecSpace>(pixelgpudetails::MAX_FED_WORDS);
+      digis_d = SiPixelDigisKokkos<KokkosDeviceMemSpace>(pixelgpudetails::MAX_FED_WORDS, execSpace);
       if (includeErrors) {
-        digiErrors_d = SiPixelDigiErrorsKokkos<KokkosExecSpace>(
-            pixelgpudetails::MAX_FED_WORDS, std::move(errors), KokkosExecSpace());
+        digiErrors_d =
+            SiPixelDigiErrorsKokkos<KokkosDeviceMemSpace>(pixelgpudetails::MAX_FED_WORDS, std::move(errors), execSpace);
       }
-      clusters_d = SiPixelClustersKokkos<KokkosExecSpace>(::gpuClustering::MaxNumModules);
+      clusters_d = SiPixelClustersKokkos<KokkosDeviceMemSpace>(::gpuClustering::MaxNumModules, execSpace);
 
       if (wordCounter)  // protect in case of empty event....
       {
@@ -589,12 +590,10 @@ namespace KOKKOS_NAMESPACE {
         // wordCounter is the total no of words in each event to be trasfered on device
 
         // TODO: can not deep_copy Views of different size
-        //Kokkos::View<unsigned int *, KokkosExecSpace> word_d("word_d", wordCounter);
-        //Kokkos::View<unsigned char *, KokkosExecSpace> fedId_d("fedId_d", wordCounter);
-        Kokkos::View<unsigned int *, KokkosExecSpace> word_d(Kokkos::ViewAllocateWithoutInitializing("word_d"),
-                                                             MAX_FED_WORDS);
-        Kokkos::View<unsigned char *, KokkosExecSpace> fedId_d(Kokkos::ViewAllocateWithoutInitializing("fedId_d"),
-                                                               MAX_FED_WORDS);
+        auto word_d_ptr = cms::kokkos::make_shared<unsigned int[], KokkosDeviceMemSpace>(MAX_FED_WORDS, execSpace);
+        auto fedId_d_ptr = cms::kokkos::make_shared<unsigned char[], KokkosDeviceMemSpace>(MAX_FED_WORDS, execSpace);
+        auto word_d = cms::kokkos::to_view(word_d_ptr);
+        auto fedId_d = cms::kokkos::to_view(fedId_d_ptr);
         Kokkos::deep_copy(execSpace, word_d, wordFed.word());
         Kokkos::deep_copy(execSpace, fedId_d, wordFed.fedId());
 

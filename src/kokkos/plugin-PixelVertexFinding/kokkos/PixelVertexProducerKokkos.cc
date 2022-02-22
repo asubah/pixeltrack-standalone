@@ -1,5 +1,8 @@
 #include "DataFormats/ZVertexSoA.h"
 #include "KokkosCore/kokkosConfig.h"
+#include "KokkosCore/Product.h"
+#include "KokkosCore/ScopedContext.h"
+#include "KokkosCore/shared_ptr.h"
 #include "KokkosDataFormats/PixelTrackKokkos.h"
 #include "Framework/EventSetup.h"
 #include "Framework/Event.h"
@@ -18,8 +21,9 @@ namespace KOKKOS_NAMESPACE {
   private:
     void produce(edm::Event& iEvent, const edm::EventSetup& iSetup) override;
 
-    edm::EDGetTokenT<Kokkos::View<pixelTrack::TrackSoA, KokkosExecSpace>> tokenTrack_;
-    edm::EDPutTokenT<Kokkos::View<ZVertexSoA, KokkosExecSpace>> tokenVertex_;
+    edm::EDGetTokenT<cms::kokkos::Product<cms::kokkos::shared_ptr<pixelTrack::TrackSoA, KokkosDeviceMemSpace>>>
+        tokenTrack_;
+    edm::EDPutTokenT<cms::kokkos::Product<cms::kokkos::shared_ptr<ZVertexSoA, KokkosDeviceMemSpace>>> tokenVertex_;
 
     const gpuVertexFinder::Producer m_gpuAlgo;
 
@@ -28,8 +32,9 @@ namespace KOKKOS_NAMESPACE {
   };
 
   PixelVertexProducerKokkos::PixelVertexProducerKokkos(edm::ProductRegistry& reg)
-      : tokenTrack_(reg.consumes<Kokkos::View<pixelTrack::TrackSoA, KokkosExecSpace>>()),
-        tokenVertex_(reg.produces<Kokkos::View<ZVertexSoA, KokkosExecSpace>>()),
+      : tokenTrack_(
+            reg.consumes<cms::kokkos::Product<cms::kokkos::shared_ptr<pixelTrack::TrackSoA, KokkosDeviceMemSpace>>>()),
+        tokenVertex_(reg.produces<cms::kokkos::Product<cms::kokkos::shared_ptr<ZVertexSoA, KokkosDeviceMemSpace>>>()),
         m_gpuAlgo(true,   // oneKernel
                   true,   // useDensity
                   false,  // useDBSCAN
@@ -43,9 +48,11 @@ namespace KOKKOS_NAMESPACE {
   {}
 
   void PixelVertexProducerKokkos::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
-    auto const& tracks = iEvent.get(tokenTrack_);
+    auto const& ptracks = iEvent.get(tokenTrack_);
+    cms::kokkos::ScopedContextProduce<KokkosExecSpace> ctx{ptracks};
+    auto const& tracks = ctx.get(ptracks);
 
-    iEvent.emplace(tokenVertex_, m_gpuAlgo.make(tracks, m_ptMin, KokkosExecSpace()));
+    ctx.emplace(iEvent, tokenVertex_, m_gpuAlgo.make(tracks, m_ptMin, ctx.execSpace()));
   }
 }  // namespace KOKKOS_NAMESPACE
 

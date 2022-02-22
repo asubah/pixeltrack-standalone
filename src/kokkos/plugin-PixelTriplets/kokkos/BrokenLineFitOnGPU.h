@@ -21,15 +21,16 @@ namespace KOKKOS_NAMESPACE {
 
   // #define BL_DUMP_HITS
   template <int N>
-  KOKKOS_FORCEINLINE_FUNCTION void kernelBLFastFit(Tuples const *__restrict__ foundNtuplets,
-                                                   CAConstants::TupleMultiplicity const *__restrict__ tupleMultiplicity,
-                                                   HitsOnGPU const *__restrict__ hhp,
-                                                   const Kokkos::View<double *, KokkosExecSpace, Restrict> &phits,
-                                                   const Kokkos::View<float *, KokkosExecSpace, Restrict> &phits_ge,
-                                                   const Kokkos::View<double *, KokkosExecSpace, Restrict> &pfast_fit,
-                                                   uint32_t nHits,
-                                                   uint32_t offset,
-                                                   int local_idx) {
+  KOKKOS_FORCEINLINE_FUNCTION void kernelBLFastFit(
+      Tuples const *__restrict__ foundNtuplets,
+      CAConstants::TupleMultiplicity const *__restrict__ tupleMultiplicity,
+      HitsOnGPU const *__restrict__ hhp,
+      const Kokkos::View<double *, KokkosDeviceMemSpace, RestrictUnmanaged> &phits,
+      const Kokkos::View<float *, KokkosDeviceMemSpace, RestrictUnmanaged> &phits_ge,
+      const Kokkos::View<double *, KokkosDeviceMemSpace, RestrictUnmanaged> &pfast_fit,
+      uint32_t nHits,
+      uint32_t offset,
+      int local_idx) {
     constexpr uint32_t hitsInFit = N;
 
     assert(hitsInFit <= nHits);
@@ -111,15 +112,16 @@ namespace KOKKOS_NAMESPACE {
   }
 
   template <int N>
-  KOKKOS_FORCEINLINE_FUNCTION void kernelBLFit(CAConstants::TupleMultiplicity const *__restrict__ tupleMultiplicity,
-                                               double B,
-                                               OutputSoA *results,
-                                               const Kokkos::View<double *, KokkosExecSpace, Restrict> &phits,
-                                               const Kokkos::View<float *, KokkosExecSpace, Restrict> &phits_ge,
-                                               const Kokkos::View<double *, KokkosExecSpace, Restrict> &pfast_fit,
-                                               uint32_t nHits,
-                                               uint32_t offset,
-                                               int local_idx) {
+  KOKKOS_FORCEINLINE_FUNCTION void kernelBLFit(
+      CAConstants::TupleMultiplicity const *__restrict__ tupleMultiplicity,
+      double B,
+      OutputSoA *results,
+      const Kokkos::View<double *, KokkosDeviceMemSpace, RestrictUnmanaged> &phits,
+      const Kokkos::View<float *, KokkosDeviceMemSpace, RestrictUnmanaged> &phits_ge,
+      const Kokkos::View<double *, KokkosDeviceMemSpace, RestrictUnmanaged> &pfast_fit,
+      uint32_t nHits,
+      uint32_t offset,
+      int local_idx) {
     assert(N <= nHits);
 
     assert(results);

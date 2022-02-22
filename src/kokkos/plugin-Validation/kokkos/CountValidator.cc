@@ -1,4 +1,6 @@
 #include "KokkosCore/kokkosConfig.h"
+#include "KokkosCore/Product.h"
+#include "KokkosCore/ScopedContext.h"
 #include "KokkosDataFormats/PixelTrackKokkos.h"
 #include "KokkosDataFormats/SiPixelClustersKokkos.h"
 #include "KokkosDataFormats/SiPixelDigisKokkos.h"
@@ -30,10 +32,10 @@ namespace KOKKOS_NAMESPACE {
     edm::EDGetTokenT<TrackCount> trackCountToken_;
     edm::EDGetTokenT<VertexCount> vertexCountToken_;
 
-    edm::EDGetTokenT<SiPixelDigisKokkos<KokkosExecSpace>> digiToken_;
-    edm::EDGetTokenT<SiPixelClustersKokkos<KokkosExecSpace>> clusterToken_;
-    edm::EDGetTokenT<Kokkos::View<pixelTrack::TrackSoA, KokkosExecSpace>::HostMirror> trackToken_;
-    edm::EDGetTokenT<Kokkos::View<ZVertexSoA, KokkosExecSpace>::HostMirror> vertexToken_;
+    edm::EDGetTokenT<cms::kokkos::Product<SiPixelDigisKokkos<KokkosDeviceMemSpace>>> digiToken_;
+    edm::EDGetTokenT<cms::kokkos::Product<SiPixelClustersKokkos<KokkosDeviceMemSpace>>> clusterToken_;
+    edm::EDGetTokenT<cms::kokkos::shared_ptr<pixelTrack::TrackSoA, KokkosHostMemSpace>> trackToken_;
+    edm::EDGetTokenT<cms::kokkos::shared_ptr<ZVertexSoA, KokkosHostMemSpace>> vertexToken_;
 
     static std::atomic<int> allEvents;
     static std::atomic<int> goodEvents;
@@ -53,10 +55,10 @@ namespace KOKKOS_NAMESPACE {
       : digiClusterCountToken_(reg.consumes<DigiClusterCount>()),
         trackCountToken_(reg.consumes<TrackCount>()),
         vertexCountToken_(reg.consumes<VertexCount>()),
-        digiToken_(reg.consumes<SiPixelDigisKokkos<KokkosExecSpace>>()),
-        clusterToken_(reg.consumes<SiPixelClustersKokkos<KokkosExecSpace>>()),
-        trackToken_(reg.consumes<Kokkos::View<pixelTrack::TrackSoA, KokkosExecSpace>::HostMirror>()),
-        vertexToken_(reg.consumes<Kokkos::View<ZVertexSoA, KokkosExecSpace>::HostMirror>()) {}
+        digiToken_(reg.consumes<cms::kokkos::Product<SiPixelDigisKokkos<KokkosDeviceMemSpace>>>()),
+        clusterToken_(reg.consumes<cms::kokkos::Product<SiPixelClustersKokkos<KokkosDeviceMemSpace>>>()),
+        trackToken_(reg.consumes<cms::kokkos::shared_ptr<pixelTrack::TrackSoA, KokkosHostMemSpace>>()),
+        vertexToken_(reg.consumes<cms::kokkos::shared_ptr<ZVertexSoA, KokkosHostMemSpace>>()) {}
 
   void CountValidator::produce(edm::Event& iEvent, const edm::EventSetup& iSetup) {
     // values from cuda program
@@ -69,8 +71,10 @@ namespace KOKKOS_NAMESPACE {
 
     {
       auto const& count = iEvent.get(digiClusterCountToken_);
-      auto const& digis = iEvent.get(digiToken_);
-      auto const& clusters = iEvent.get(clusterToken_);
+      auto const& pdigis = iEvent.get(digiToken_);
+      cms::kokkos::ScopedContextProduce<KokkosExecSpace> ctx{pdigis};
+      auto const& digis = ctx.get(pdigis);
+      auto const& clusters = ctx.get(iEvent, clusterToken_);
 
       if (digis.nModules() != count.nModules()) {
         ss << "\n N(modules) is " << digis.nModules() << " expected " << count.nModules();
@@ -91,8 +95,8 @@ namespace KOKKOS_NAMESPACE {
       auto const& tracks = iEvent.get(trackToken_);
 
       int nTracks = 0;
-      for (int i = 0; i < tracks().stride(); ++i) {
-        if (tracks().nHits(i) > 0) {
+      for (int i = 0; i < tracks->stride(); ++i) {
+        if (tracks->nHits(i) > 0) {
           ++nTracks;
         }
       }
@@ -113,12 +117,12 @@ namespace KOKKOS_NAMESPACE {
       auto const& count = iEvent.get(vertexCountToken_);
       auto const& vertices = iEvent.get(vertexToken_);
 
-      auto diff = std::abs(int(vertices().nvFinal) - int(count.nVertices()));
+      auto diff = std::abs(int(vertices->nvFinal) - int(count.nVertices()));
       if (diff != 0) {
         sumVertexDifference += diff;
       }
       if (diff > vertexTolerance) {
-        ss << "\n N(vertices) is " << vertices().nvFinal << " expected " << count.nVertices() << ", difference " << diff
+        ss << "\n N(vertices) is " << vertices->nvFinal << " expected " << count.nVertices() << ", difference " << diff
            << " is outside tolerance " << vertexTolerance;
         ok = false;
       }

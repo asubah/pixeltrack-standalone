@@ -1,17 +1,16 @@
-#ifndef RecoLocalTracker_SiPixelRecHits_pixelCPEforGPU_h
-#define RecoLocalTracker_SiPixelRecHits_pixelCPEforGPU_h
+#ifndef CondFormats_pixelCPEforGPU_h
+#define CondFormats_pixelCPEforGPU_h
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <iterator>
 
+#include "AlpakaCore/alpakaConfig.h"
 #include "AlpakaDataFormats/gpuClusteringConstants.h"
 #include "DataFormats/SOARotation.h"
 #include "Geometry/phase1PixelTopology.h"
-
-#include "AlpakaCore/alpakaCommon.h"
-//#include "CUDACore/cuda_cxx17.h"  // TO DO: include this??
 
 namespace pixelCPEforGPU {
 
@@ -198,8 +197,8 @@ namespace pixelCPEforGPU {
 
     auto xsize = int(urxl) + 2 - int(llxl);
     auto ysize = int(uryl) + 2 - int(llyl);
-    assert(xsize >= 0);  // 0 if bixpix...
-    assert(ysize >= 0);
+    ALPAKA_ASSERT_OFFLOAD(xsize >= 0);  // 0 if bixpix...
+    ALPAKA_ASSERT_OFFLOAD(ysize >= 0);
 
     if (phase1PixelTopology::isBigPixX(cp.minRow[ic]))
       ++xsize;
@@ -344,4 +343,4 @@ namespace pixelCPEforGPU {
 
 }  // namespace pixelCPEforGPU
 
-#endif  // RecoLocalTracker_SiPixelRecHits_pixelCPEforGPU_h
+#endif  // CondFormats_pixelCPEforGPU_h

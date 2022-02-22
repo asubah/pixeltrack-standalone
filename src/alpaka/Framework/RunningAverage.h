@@ -1,8 +1,9 @@
-#ifndef FWCore_Utilities_RunningAverage_H
-#define FWCore_Utilities_RunningAverage_H
+#ifndef Framework_RunningAverage_h
+#define Framework_RunningAverage_h
 #include <atomic>
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 // Function for testing RunningAverage
 namespace test_average {
@@ -50,4 +51,4 @@ namespace edm {
   };
 }  // namespace edm
 
-#endif
+#endif  // Framework_RunningAverage_h

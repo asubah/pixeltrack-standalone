@@ -1,10 +1,11 @@
-#ifndef RecoPixelVertexing_PixelVertexFinding_src_gpuSortByPt2_h
-#define RecoPixelVertexing_PixelVertexFinding_src_gpuSortByPt2_h
+#ifndef plugin_PixelVertexFinding_alpaka_gpuSortByPt2_h
+#define plugin_PixelVertexFinding_alpaka_gpuSortByPt2_h
 
-#include "AlpakaCore/alpakaKernelCommon.h"
-#include "AlpakaCore/radixSort.h"
+#include <algorithm>
 
 #include "AlpakaCore/HistoContainer.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaCore/radixSort.h"
 
 #include "gpuVertexFinder.h"
 
@@ -12,8 +13,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   namespace gpuVertexFinder {
 
-    template <typename T_Acc>
-    ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) void sortByPt2(const T_Acc& acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) void sortByPt2(const TAcc& acc,
                                                                                  ZVertices* pdata,
                                                                                  WorkSpace* pws) {
       auto& __restrict__ data = *pdata;
@@ -52,10 +53,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           sortInd[0] = 0;
         return;
       }
-#ifdef ALPAKA_ACC_GPU_CUDA_ENABLED
+#ifdef ALPAKA_ACC_GPU_CUDA_ASYNC_BACKEND
       auto& sws = alpaka::declareSharedVar<uint16_t[1024], __COUNTER__>(acc);
       // sort using only 16 bits
-      cms::alpakatools::radixSort<Acc1, float, 2>(acc, ptv2, sortInd, sws, nvFinal);
+      cms::alpakatools::radixSort<Acc1D, float, 2>(acc, ptv2, sortInd, sws, nvFinal);
 #else
       for (uint16_t i = 0; i < nvFinal; ++i)
         sortInd[i] = i;
@@ -64,8 +65,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     }
 
     struct sortByPt2Kernel {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc, ZVertices* pdata, WorkSpace* pws) const {
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc, ZVertices* pdata, WorkSpace* pws) const {
         sortByPt2(acc, pdata, pws);
       }
     };
@@ -74,4 +75,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoPixelVertexing_PixelVertexFinding_src_gpuSortByPt2_h
+#endif  // plugin_PixelVertexFinding_alpaka_gpuSortByPt2_h

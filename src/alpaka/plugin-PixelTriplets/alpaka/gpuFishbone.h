@@ -1,5 +1,5 @@
-#ifndef RecoLocalTracker_SiPixelRecHits_plugins_gpuFishbone_h
-#define RecoLocalTracker_SiPixelRecHits_plugins_gpuFishbone_h
+#ifndef plugin_PixelTriplets_alpaka_gpuFishbone_h
+#define plugin_PixelTriplets_alpaka_gpuFishbone_h
 
 #include <algorithm>
 #include <cmath>
@@ -7,11 +7,10 @@
 #include <cstdio>
 #include <limits>
 
-#include "AlpakaCore/alpakaKernelCommon.h"
-
+#include "AlpakaCore/VecArray.h"
+#include "AlpakaCore/alpakaConfig.h"
 #include "DataFormats/approx_atan2.h"
 #include "Geometry/phase1PixelTopology.h"
-#include "AlpakaCore/VecArray.h"
 
 #include "GPUCACell.h"
 
@@ -21,8 +20,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     //  __device__
     //  __forceinline__
     struct fishbone {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     GPUCACell::Hits const* __restrict__ hhp,
                                     GPUCACell* cells,
                                     uint32_t const* __restrict__ nCells,
@@ -52,7 +51,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         uint32_t firstElementIdxY = firstElementIdxNoStrideY;
         uint32_t endElementIdxY = endElementIdxNoStrideY;
         for (uint32_t idy = firstElementIdxY, nt = nHits; idy < nt; ++idy) {
-          if (!cms::alpakatools::next_valid_element_index_strided(
+          if (not cms::alpakatools::next_valid_element_index_strided(
                   idy, firstElementIdxY, endElementIdxY, gridDimensionY, nt))
             break;
 
@@ -88,7 +87,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           uint32_t firstElementIdxX = firstElementIdxNoStrideX;
           uint32_t endElementIdxX = endElementIdxNoStrideX;
           for (uint32_t ic = firstElementIdxX; ic < sg - 1; ++ic) {
-            if (!cms::alpakatools::next_valid_element_index_strided(
+            if (not cms::alpakatools::next_valid_element_index_strided(
                     ic, firstElementIdxX, endElementIdxX, blockDimensionX, sg - 1))
               break;
 
@@ -118,4 +117,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   }  // namespace gpuPixelDoublets
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoLocalTracker_SiPixelRecHits_plugins_gpuFishbone_h
+#endif  // plugin_PixelTriplets_alpaka_gpuFishbone_h

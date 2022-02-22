@@ -1,6 +1,8 @@
-#ifndef HeterogeneousCore_AlpakaUtilities_alpakastdAlgorithm_h
-#define HeterogeneousCore_AlpakaUtilities_alpakastdAlgorithm_h
+#ifndef AlpakaCore_alpakastdAlgorithm_h
+#define AlpakaCore_alpakastdAlgorithm_h
 
+#include <algorithm>
+#include <functional>
 #include <utility>
 
 #include <alpaka/alpaka.hpp>
@@ -67,4 +69,4 @@ namespace alpaka_std {
 
 }  // namespace alpaka_std
 
-#endif  // HeterogeneousCore_AlpakaUtilities_alpakastdAlgorithm_h
+#endif  // AlpakaCore_alpakastdAlgorithm_h

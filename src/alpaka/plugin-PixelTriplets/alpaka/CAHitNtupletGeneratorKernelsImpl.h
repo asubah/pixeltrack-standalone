@@ -1,17 +1,20 @@
+#ifndef plugin_PixelTriplets_alpaka_CAHitNtupletGeneratorKernelsImpl_h
+#define plugin_PixelTriplets_alpaka_CAHitNtupletGeneratorKernelsImpl_h
+
 //
 // Original Author: Felice Pantaleo, CERN
 //
 
 // #define NTUPLE_DEBUG
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
-#include "AlpakaCore/alpakaKernelCommon.h"
-
+#include "AlpakaCore/alpakaConfig.h"
 #include "CondFormats/pixelCPEforGPU.h"
 
-#include "CAConstants.h"
+#include "../CAConstants.h"
 #include "CAHitNtupletGeneratorKernels.h"
 #include "GPUCACell.h"
 #include "gpuFishbone.h"
@@ -19,7 +22,7 @@
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
-  using HitsOnGPU = TrackingRecHit2DSOAView;
+  using HitsOnGPU = TrackingRecHit2DSoAView;
   using HitsOnCPU = TrackingRecHit2DAlpaka;
 
   using HitToTuple = CAConstants::HitToTuple;
@@ -30,8 +33,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   using HitContainer = pixelTrack::HitContainer;
 
   struct kernel_checkOverflows {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   HitContainer const *foundNtuplets,
                                   CAConstants::TupleMultiplicity *tupleMultiplicity,
                                   cms::alpakatools::AtomicPairCounter *apc,
@@ -66,8 +69,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                apc->get().n,
                nHits);
         if (apc->get().m < CAConstants::maxNumberOfQuadruplets()) {
-          assert(foundNtuplets->size(apc->get().m) == 0);
-          assert(foundNtuplets->size() == apc->get().n);
+          ALPAKA_ASSERT_OFFLOAD(foundNtuplets->size(apc->get().m) == 0);
+          ALPAKA_ASSERT_OFFLOAD(foundNtuplets->size() == apc->get().n);
         }
       }
 
@@ -75,9 +78,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       cms::alpakatools::for_each_element_in_grid_strided(acc, ntNbins, [&](uint32_t idx) {
         if (foundNtuplets->size(idx) > 5)
           printf("ERROR %d, %d\n", idx, foundNtuplets->size(idx));
-        assert(foundNtuplets->size(idx) < 6);
+        ALPAKA_ASSERT_OFFLOAD(foundNtuplets->size(idx) < 6);
         for (auto ih = foundNtuplets->begin(idx); ih != foundNtuplets->end(idx); ++ih)
-          assert(*ih < nHits);
+          ALPAKA_ASSERT_OFFLOAD(*ih < nHits);
       });
 #endif
 
@@ -115,8 +118,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_fishboneCleaner {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   GPUCACell const *cells,
                                   uint32_t const *__restrict__ nCells,
                                   Quality *quality) const {
@@ -135,8 +138,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_earlyDuplicateRemover {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   GPUCACell const *cells,
                                   uint32_t const *__restrict__ nCells,
                                   HitContainer *foundNtuplets,
@@ -145,7 +148,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       constexpr auto dup = trackQuality::dup;
       // constexpr auto loose = trackQuality::loose;
 
-      assert(nCells);
+      ALPAKA_ASSERT_OFFLOAD(nCells);
       const auto ntNCells = (*nCells);
       cms::alpakatools::for_each_element_in_grid_strided(acc, ntNCells, [&](uint32_t idx) {
         auto const &thisCell = cells[idx];
@@ -172,8 +175,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_fastDuplicateRemover {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   GPUCACell const *__restrict__ cells,
                                   uint32_t const *__restrict__ nCells,
                                   HitContainer const *__restrict__ foundNtuplets,
@@ -182,7 +185,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       constexpr auto dup = trackQuality::dup;
       constexpr auto loose = trackQuality::loose;
 
-      assert(nCells);
+      ALPAKA_ASSERT_OFFLOAD(nCells);
 
       cms::alpakatools::for_each_element_in_grid_strided(acc, (*nCells), [&](uint32_t idx) {
         auto const &thisCell = cells[idx];
@@ -215,8 +218,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_connect {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   cms::alpakatools::AtomicPairCounter *apc1,
                                   cms::alpakatools::AtomicPairCounter *apc2,  // just to zero them,
                                   GPUCACell::Hits const *__restrict__ hhp,
@@ -303,8 +306,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_find_ntuplets {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   GPUCACell::Hits const *__restrict__ hhp,
                                   GPUCACell *__restrict__ cells,
                                   uint32_t const *nCells,
@@ -327,9 +330,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           if (doit) {
             GPUCACell::TmpTuple stack;
             stack.reset();
-            thisCell.find_ntuplets(
+            thisCell.find_ntuplets<6>(
                 acc, hh, cells, *cellTracks, *foundNtuplets, *apc, quality, stack, minHitsPerNtuplet, pid < 3);
-            assert(stack.empty());
+            ALPAKA_ASSERT_OFFLOAD(stack.empty());
             // printf("in %d found quadruplets: %d\n", cellIndex, apc->get());
           }
         }
@@ -338,8 +341,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_mark_used {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   GPUCACell::Hits const *__restrict__ hhp,
                                   GPUCACell *__restrict__ cells,
                                   uint32_t const *nCells) const {
@@ -353,18 +356,18 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_countMultiplicity {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   HitContainer const *__restrict__ foundNtuplets,
                                   Quality const *__restrict__ quality,
                                   CAConstants::TupleMultiplicity *tupleMultiplicity) const {
       cms::alpakatools::for_each_element_in_grid_strided(acc, foundNtuplets->nbins(), [&](uint32_t it) {
         auto nhits = foundNtuplets->size(it);
         if (nhits >= 3 && quality[it] != trackQuality::dup) {
-          assert(quality[it] == trackQuality::bad);
+          ALPAKA_ASSERT_OFFLOAD(quality[it] == trackQuality::bad);
           if (nhits > 5)
             printf("wrong mult %d %d\n", it, nhits);
-          assert(nhits < 8);
+          ALPAKA_ASSERT_OFFLOAD(nhits < 8);
           tupleMultiplicity->countDirect(acc, nhits);
         }
       });
@@ -372,18 +375,18 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_fillMultiplicity {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   HitContainer const *__restrict__ foundNtuplets,
                                   Quality const *__restrict__ quality,
                                   CAConstants::TupleMultiplicity *tupleMultiplicity) const {
       cms::alpakatools::for_each_element_in_grid_strided(acc, foundNtuplets->nbins(), [&](uint32_t it) {
         auto nhits = foundNtuplets->size(it);
         if (nhits >= 3 && quality[it] != trackQuality::dup) {
-          assert(quality[it] == trackQuality::bad);
+          ALPAKA_ASSERT_OFFLOAD(quality[it] == trackQuality::bad);
           if (nhits > 5)
             printf("wrong mult %d %d\n", it, nhits);
-          assert(nhits < 8);
+          ALPAKA_ASSERT_OFFLOAD(nhits < 8);
           tupleMultiplicity->fillDirect(acc, nhits, it);
         }
       });
@@ -391,8 +394,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_classifyTracks {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   HitContainer const *__restrict__ tuples,
                                   TkSoA const *__restrict__ tracks,
                                   CAHitNtupletGeneratorKernels::QualityCuts cuts,
@@ -405,7 +408,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         // if duplicate: not even fit
         // mark doublets as bad
         if (quality[it] != trackQuality::dup && nhits >= 3) {
-          assert(quality[it] == trackQuality::bad);
+          ALPAKA_ASSERT_OFFLOAD(quality[it] == trackQuality::bad);
 
           // if the fit has any invalid parameters, mark it as bad
           bool isNaN = false;
@@ -458,8 +461,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_doStatsForTracks {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   HitContainer const *__restrict__ tuples,
                                   Quality const *__restrict__ quality,
                                   CAHitNtupletGeneratorKernels::Counters *counters) const {
@@ -474,8 +477,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_countHitInTracks {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   HitContainer const *__restrict__ tuples,
                                   Quality const *__restrict__ quality,
                                   CAHitNtupletGeneratorKernels::HitToTuple *hitToTuple) const {
@@ -491,8 +494,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_fillHitInTracks {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   HitContainer const *__restrict__ tuples,
                                   Quality const *__restrict__ quality,
                                   CAHitNtupletGeneratorKernels::HitToTuple *hitToTuple) const {
@@ -508,10 +511,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_fillHitDetIndices {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   HitContainer const *__restrict__ tuples,
-                                  TrackingRecHit2DSOAView const *__restrict__ hhp,
+                                  TrackingRecHit2DSoAView const *__restrict__ hhp,
                                   HitContainer *__restrict__ hitDetIndices) const {
       // copy offsets
       cms::alpakatools::for_each_element_in_grid_strided(
@@ -519,18 +522,20 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       // fill hit indices
       auto const &hh = *hhp;
 #ifndef NDEBUG
-      auto nhits = hh.nHits();
+      [[maybe_unused]] auto nhits = hh.nHits();
 #endif
       cms::alpakatools::for_each_element_in_grid_strided(acc, tuples->size(), [&](uint32_t idx) {
-        assert(tuples->bins[idx] < nhits);
+#ifndef NDEBUG
+        ALPAKA_ASSERT_OFFLOAD(tuples->bins[idx] < nhits);
+#endif
         hitDetIndices->bins[idx] = hh.detectorIndex(tuples->bins[idx]);
       });
     }
   };
 
   struct kernel_doStatsForHitInTracks {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   CAHitNtupletGeneratorKernels::HitToTuple const *__restrict__ hitToTuple,
                                   CAHitNtupletGeneratorKernels::Counters *counters) const {
       auto &c = *counters;
@@ -545,9 +550,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_tripletCleaner {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
-                                  TrackingRecHit2DSOAView const *__restrict__ hhp,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
+                                  TrackingRecHit2DSoAView const *__restrict__ hhp,
                                   HitContainer const *__restrict__ ptuples,
                                   TkSoA const *__restrict__ ptracks,
                                   Quality *__restrict__ quality,
@@ -605,9 +610,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_print_found_ntuplets {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
-                                  TrackingRecHit2DSOAView const *__restrict__ hhp,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
+                                  TrackingRecHit2DSoAView const *__restrict__ hhp,
                                   HitContainer const *__restrict__ ptuples,
                                   TkSoA const *__restrict__ ptracks,
                                   Quality const *__restrict__ quality,
@@ -643,8 +648,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
   struct kernel_printCounters {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc, cAHitNtupletGenerator::Counters const *counters) const {
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc, cAHitNtupletGenerator::Counters const *counters) const {
       auto const &c = *counters;
       printf(
           "||Counters | nEvents | nHits | nCells | nTuples | nFitTacks  |  nGoodTracks | nUsedHits | nDupHits | "
@@ -678,3 +683,5 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
+
+#endif  // plugin_PixelTriplets_alpaka_CAHitNtupletGeneratorKernelsImpl_h

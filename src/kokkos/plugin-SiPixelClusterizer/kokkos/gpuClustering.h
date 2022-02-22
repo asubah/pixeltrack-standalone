@@ -8,6 +8,7 @@
 #include "KokkosCore/hintLightWeight.h"
 #include "KokkosCore/HistoContainer.h"
 #include "KokkosCore/atomic.h"
+#include "KokkosCore/memoryTraits.h"
 #include "KokkosDataFormats/gpuClusteringConstants.h"
 
 namespace KOKKOS_NAMESPACE {
@@ -17,11 +18,12 @@ namespace KOKKOS_NAMESPACE {
     __device__ uint32_t gMaxHit = 0;
 #endif
 
-    KOKKOS_INLINE_FUNCTION void countModules(const Kokkos::View<uint16_t const*, KokkosExecSpace, Restrict>& id,
-                                             const Kokkos::View<uint32_t*, KokkosExecSpace, Restrict>& moduleStart,
-                                             const Kokkos::View<int32_t*, KokkosExecSpace, Restrict>& clusterId,
-                                             int numElements,
-                                             const size_t index) {
+    KOKKOS_INLINE_FUNCTION void countModules(
+        const Kokkos::View<uint16_t const*, KokkosDeviceMemSpace, RestrictUnmanaged>& id,
+        const Kokkos::View<uint32_t*, KokkosDeviceMemSpace, RestrictUnmanaged>& moduleStart,
+        const Kokkos::View<int32_t*, KokkosDeviceMemSpace, RestrictUnmanaged>& clusterId,
+        int numElements,
+        const size_t index) {
       clusterId[index] = index;
       if (::gpuClustering::InvId == id[index])
         return;
@@ -40,16 +42,17 @@ namespace KOKKOS_NAMESPACE {
 
 namespace KOKKOS_NAMESPACE::gpuClustering {
   //  __launch_bounds__(256,4)
-  KOKKOS_INLINE_FUNCTION void findClus(
-      const Kokkos::View<const uint16_t*, KokkosExecSpace, Restrict>& id,  // module id of each pixel
-      const Kokkos::View<const uint16_t*, KokkosExecSpace, Restrict>& x,   // local coordinates of each pixel
-      const Kokkos::View<const uint16_t*, KokkosExecSpace, Restrict>& y,   //
-      const Kokkos::View<const uint32_t*, KokkosExecSpace, Restrict>&
+  inline void findClus(
+      const Kokkos::View<const uint16_t*, KokkosDeviceMemSpace, RestrictUnmanaged>& id,  // module id of each pixel
+      const Kokkos::View<const uint16_t*, KokkosDeviceMemSpace, RestrictUnmanaged>& x,  // local coordinates of each pixel
+      const Kokkos::View<const uint16_t*, KokkosDeviceMemSpace, RestrictUnmanaged>& y,  //
+      const Kokkos::View<const uint32_t*, KokkosDeviceMemSpace, RestrictUnmanaged>&
           moduleStart,  // index of the first pixel of each module
-      const Kokkos::View<uint32_t*, KokkosExecSpace, Restrict>&
+      const Kokkos::View<uint32_t*, KokkosDeviceMemSpace, RestrictUnmanaged>&
           nClustersInModule,  // output: number of clusters found in each module
-      const Kokkos::View<uint32_t*, KokkosExecSpace, Restrict>& moduleId,  // output: module id of each module
-      const Kokkos::View<int*, KokkosExecSpace, Restrict>& clusterId,      // output: cluster id of each pixel
+      const Kokkos::View<uint32_t*, KokkosDeviceMemSpace, RestrictUnmanaged>&
+          moduleId,                                                                  // output: module id of each module
+      const Kokkos::View<int*, KokkosDeviceMemSpace, RestrictUnmanaged>& clusterId,  // output: cluster id of each pixel
       int numElements,
       Kokkos::TeamPolicy<KokkosExecSpace>& teamPolicy,
       KokkosExecSpace const& execSpace) {
@@ -58,9 +61,9 @@ namespace KOKKOS_NAMESPACE::gpuClustering {
     using Hist = cms::kokkos::HistoContainer<uint16_t, nbins, maxPixInModule, 9, uint16_t>;
 
     using member_type = Kokkos::TeamPolicy<KokkosExecSpace>::member_type;
-    using shared_team_view = Kokkos::View<uint32_t, KokkosExecSpace::scratch_memory_space, Kokkos::MemoryUnmanaged>;
-    using HistView = Kokkos::View<Hist, KokkosExecSpace::scratch_memory_space, Kokkos::MemoryUnmanaged>;
-    using SizeView = Kokkos::View<int, KokkosExecSpace::scratch_memory_space, Kokkos::MemoryUnmanaged>;
+    using shared_team_view = Kokkos::View<uint32_t, KokkosExecSpace::scratch_memory_space, RestrictUnmanaged>;
+    using HistView = Kokkos::View<Hist, KokkosExecSpace::scratch_memory_space, RestrictUnmanaged>;
+    using SizeView = Kokkos::View<int, KokkosExecSpace::scratch_memory_space, RestrictUnmanaged>;
     size_t shared_view_bytes = shared_team_view::shmem_size() + HistView::shmem_size() + SizeView::shmem_size();
 
     int shared_view_level = 0;
@@ -133,35 +136,25 @@ namespace KOKKOS_NAMESPACE::gpuClustering {
 
 #if defined KOKKOS_BACKEND_SERIAL || defined KOKKOS_BACKEND_PTHREAD
           const uint32_t maxiter = hist_size;
+          // When compiling with gcc directly, the VLA compiles. When compiling via nvcc, it doesn't.
+          // GPU backend uses 256 threads per team, therefore the
+          // effective maximum number of iterations is 16*256 for
+          // Serial case.
+          // TODO: maybe this works well-enough for PTHREAD case too (even if it is number of threads/team too large)?
+          constexpr uint32_t maxiterSize = 16 * 256;
 #else
-          const uint32_t maxiter = 16;
+          constexpr uint32_t maxiter = 16;
+          constexpr uint32_t maxiterSize = maxiter;
 #endif
 
           constexpr int maxNeighbours = 10;
-          assert((hist_size / teamMember.team_size()) <= maxiter);
-      // nearest neighbour
-
-#if defined KOKKOS_BACKEND_CUDA || defined KOKKOS_BACKEND_HIP
-          uint16_t nn[maxiter][maxNeighbours];
-          uint8_t nnn[maxiter];
-
+          assert((hist_size / teamMember.team_size()) <= maxiterSize);
+          // nearest neighbour
+          uint16_t nn[maxiterSize][maxNeighbours];
+          uint8_t nnn[maxiterSize];
           for (uint32_t k = 0; k < maxiter; ++k) {
             nnn[k] = 0;
-            for (uint32_t l = 0; l < maxNeighbours; ++l)
-              nn[k][l] = 0;
           }
-#else
-
-          uint16_t** nn = new uint16_t*[maxiter];
-          uint8_t* nnn = new uint8_t[maxiter];
-          for (uint32_t k = 0; k < maxiter; ++k) {
-            nnn[k] = 0;
-            nn[k] = new uint16_t[maxNeighbours];
-            // cuda version does not iniitalize nn
-            for (uint32_t l = 0; l < maxNeighbours; ++l)
-              nn[k][l] = 0;
-          }
-#endif
 
           teamMember.team_barrier();  // for hit filling!
 

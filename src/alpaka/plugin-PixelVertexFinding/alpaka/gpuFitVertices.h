@@ -1,9 +1,8 @@
-#ifndef RecoPixelVertexing_PixelVertexFinding_src_gpuFitVertices_h
-#define RecoPixelVertexing_PixelVertexFinding_src_gpuFitVertices_h
-
-#include "AlpakaCore/alpakaKernelCommon.h"
+#ifndef plugin_PixelVertexFinding_alpaka_gpuFitVertices_h
+#define plugin_PixelVertexFinding_alpaka_gpuFitVertices_h
 
 #include "AlpakaCore/HistoContainer.h"
+#include "AlpakaCore/alpakaConfig.h"
 
 #include "gpuVertexFinder.h"
 
@@ -11,9 +10,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   namespace gpuVertexFinder {
 
-    template <typename T_Acc>
+    template <typename TAcc>
     ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) void fitVertices(
-        const T_Acc& acc,
+        const TAcc& acc,
         ZVertices* pdata,
         WorkSpace* pws,
         float chi2Max  // for outlier rejection
@@ -34,10 +33,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       int32_t* __restrict__ nn = data.ndof;
       int32_t* __restrict__ iv = ws.iv;
 
-      assert(pdata);
-      assert(zt);
+      ALPAKA_ASSERT_OFFLOAD(pdata);
+      ALPAKA_ASSERT_OFFLOAD(zt);
 
-      assert(nvFinal <= nvIntermediate);
+      ALPAKA_ASSERT_OFFLOAD(nvFinal <= nvIntermediate);
       nvFinal = nvIntermediate;
       auto foundClusters = nvFinal;
 
@@ -60,10 +59,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       cms::alpakatools::for_each_element_in_block_strided(acc, nt, [&](uint32_t i) {
         if (iv[i] > 9990) {
           if (verbose)
-            alpaka::atomicAdd(acc, &noise, 1, alpaka::hierarchy::Blocks{});
+            alpaka::atomicAdd(acc, &noise, 1, alpaka::hierarchy::Threads{});
         } else {
-          assert(iv[i] >= 0);
-          assert(iv[i] < int(foundClusters));
+          ALPAKA_ASSERT_OFFLOAD(iv[i] >= 0);
+          ALPAKA_ASSERT_OFFLOAD(iv[i] < int(foundClusters));
           auto w = 1.f / ezt2[i];
           alpaka::atomicAdd(acc, &zv[iv[i]], zt[i] * w, alpaka::hierarchy::Blocks{});
           alpaka::atomicAdd(acc, &wv[iv[i]], w, alpaka::hierarchy::Blocks{});
@@ -73,7 +72,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       alpaka::syncBlockThreads(acc);
       // reuse nn
       cms::alpakatools::for_each_element_in_block_strided(acc, foundClusters, [&](uint32_t i) {
-        assert(wv[i] > 0.f);
+        ALPAKA_ASSERT_OFFLOAD(wv[i] > 0.f);
         zv[i] /= wv[i];
         nn[i] = -1;  // ndof
       });
@@ -106,8 +105,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     }
 
     struct fitVerticesKernel {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     ZVertices* pdata,
                                     WorkSpace* pws,
                                     float chi2Max  // for outlier rejection
@@ -120,4 +119,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoPixelVertexing_PixelVertexFinding_src_gpuFitVertices_h
+#endif  // plugin_PixelVertexFinding_alpaka_gpuFitVertices_h

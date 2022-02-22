@@ -1,10 +1,12 @@
-#ifndef SimpleAtomicHisto_h
-#define SimpleAtomicHisto_h
+#ifndef plugin_Validation_SimpleAtomicHisto_h
+#define plugin_Validation_SimpleAtomicHisto_h
 
 #include <atomic>
 #include <cassert>
 #include <exception>
 #include <ostream>
+#include <string>
+#include <stdexcept>
 #include <vector>
 
 class SimpleAtomicHisto {
@@ -57,4 +59,4 @@ inline std::ostream& operator<<(std::ostream& os, SimpleAtomicHisto const& h) {
   return os;
 }
 
-#endif
+#endif  // plugin_Validation_SimpleAtomicHisto_h

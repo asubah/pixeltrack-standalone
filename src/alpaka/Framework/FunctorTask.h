@@ -1,5 +1,5 @@
-#ifndef FWCore_Concurrency_FunctorTask_h
-#define FWCore_Concurrency_FunctorTask_h
+#ifndef Framework_FunctorTask_h
+#define Framework_FunctorTask_h
 // -*- C++ -*-
 //
 // Package:     Concurrency
@@ -22,31 +22,29 @@
 #include <atomic>
 #include <exception>
 #include <memory>
-#include "tbb/task.h"
+#include <utility>
 
 // user include files
+#include "Framework/TaskBase.h"
 
 // forward declarations
 
 namespace edm {
   template <typename F>
-  class FunctorTask : public tbb::task {
+  class FunctorTask : public TaskBase {
   public:
     explicit FunctorTask(F f) : func_(std::move(f)) {}
 
-    task* execute() override {
-      func_();
-      return nullptr;
-    };
+    void execute() final { func_(); };
 
   private:
     F func_;
   };
 
-  template <typename ALLOC, typename F>
-  FunctorTask<F>* make_functor_task(ALLOC&& iAlloc, F f) {
-    return new (iAlloc) FunctorTask<F>(std::move(f));
+  template <typename F>
+  FunctorTask<F>* make_functor_task(F f) {
+    return new FunctorTask<F>(std::move(f));
   }
 }  // namespace edm
 
-#endif
+#endif  // Framework_FunctorTask_h

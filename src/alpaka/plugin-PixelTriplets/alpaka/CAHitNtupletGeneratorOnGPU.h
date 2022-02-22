@@ -1,11 +1,11 @@
-#ifndef RecoPixelVertexing_PixelTriplets_plugins_CAHitNtupletGeneratorOnGPU_h
-#define RecoPixelVertexing_PixelTriplets_plugins_CAHitNtupletGeneratorOnGPU_h
-
-#include "AlpakaCore/alpakaCommon.h"
+#ifndef plugin_PixelTriplets_alpaka_CAHitNtupletGeneratorOnGPU_h
+#define plugin_PixelTriplets_alpaka_CAHitNtupletGeneratorOnGPU_h
 
 #include "AlpakaCore/SimpleVector.h"
-#include "AlpakaDataFormats/PixelTrackAlpaka.h"
-#include "AlpakaDataFormats/TrackingRecHit2DAlpaka.h"
+#include "AlpakaCore/alpakaConfig.h"
+//#include "AlpakaCore/alpakaMemory.h"
+#include "AlpakaDataFormats/alpaka/PixelTrackAlpaka.h"
+#include "AlpakaDataFormats/alpaka/TrackingRecHit2DAlpaka.h"
 
 #include "CAHitNtupletGeneratorKernels.h"
 #include "GPUCACell.h"
@@ -20,9 +20,9 @@ namespace edm {
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
   class CAHitNtupletGeneratorOnGPU {
   public:
-    using HitsOnGPU = TrackingRecHit2DSOAView;
+    using HitsOnGPU = TrackingRecHit2DSoAView;
     using HitsOnCPU = TrackingRecHit2DAlpaka;
-    using hindex_type = TrackingRecHit2DSOAView::hindex_type;
+    using hindex_type = TrackingRecHit2DSoAView::hindex_type;
 
     using Quality = pixelTrack::Quality;
     using OutputSoA = pixelTrack::TrackSoA;
@@ -35,8 +35,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   public:
     CAHitNtupletGeneratorOnGPU(edm::ProductRegistry& reg);
-
-    ~CAHitNtupletGeneratorOnGPU();
+    ~CAHitNtupletGeneratorOnGPU() = default;
 
     PixelTrackAlpaka makeTuplesAsync(TrackingRecHit2DAlpaka const& hits_d, float bfield, Queue& queue) const;
 
@@ -51,8 +50,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
     Params m_params;
 
-    //AlpakaDeviceBuf<Counters> m_counters;
+    //cms::alpakatools::device_buffer<Device, Counters> m_counters;
   };
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoPixelVertexing_PixelTriplets_plugins_CAHitNtupletGeneratorOnGPU_h
+#endif  // plugin_PixelTriplets_alpaka_CAHitNtupletGeneratorOnGPU_h

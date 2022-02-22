@@ -19,7 +19,7 @@
 
 namespace KOKKOS_NAMESPACE {
   using HitsOnGPU = TrackingRecHit2DSOAView;
-  using HitsOnCPU = TrackingRecHit2DKokkos<KokkosExecSpace>;
+  using HitsOnCPU = TrackingRecHit2DKokkos<KokkosDeviceMemSpace>;
 
   using HitToTuple = CAConstants::HitToTuple;
   using TupleMultiplicity = CAConstants::TupleMultiplicity;
@@ -31,13 +31,14 @@ namespace KOKKOS_NAMESPACE {
   // TeamPolicy instead of RangePolicy due to loops with different iteration counts
   KOKKOS_INLINE_FUNCTION void kernel_checkOverflows(
       HitContainer const *foundNtuplets,
-      const Kokkos::View<TupleMultiplicity, KokkosExecSpace, Restrict> &tupleMultiplicity,
-      const Kokkos::View<cms::kokkos::AtomicPairCounter, KokkosExecSpace, Restrict> &apc,
-      const Kokkos::View<GPUCACell *, KokkosExecSpace, Restrict> &cells,
-      const Kokkos::View<uint32_t, KokkosExecSpace, Restrict> &nCells,
-      const Kokkos::View<CAConstants::CellNeighborsVector, KokkosExecSpace, Restrict> &cellNeighbors,  // not used
-      const Kokkos::View<CAConstants::CellTracksVector, KokkosExecSpace, Restrict> &cellTracks,        // not used
-      const Kokkos::View<GPUCACell::OuterHitOfCell *, KokkosExecSpace, Restrict> &isOuterHitOfCell,
+      const Kokkos::View<TupleMultiplicity, KokkosDeviceMemSpace, RestrictUnmanaged> &tupleMultiplicity,
+      const Kokkos::View<cms::kokkos::AtomicPairCounter, KokkosDeviceMemSpace, RestrictUnmanaged> &apc,
+      const Kokkos::View<GPUCACell *, KokkosDeviceMemSpace, RestrictUnmanaged> &cells,
+      const Kokkos::View<uint32_t, KokkosDeviceMemSpace, RestrictUnmanaged> &nCells,
+      const Kokkos::View<CAConstants::CellNeighborsVector, KokkosDeviceMemSpace, RestrictUnmanaged>
+          &cellNeighbors,  // not used
+      const Kokkos::View<CAConstants::CellTracksVector, KokkosDeviceMemSpace, RestrictUnmanaged> &cellTracks,  // not used
+      const Kokkos::View<GPUCACell::OuterHitOfCell *, KokkosDeviceMemSpace, RestrictUnmanaged> &isOuterHitOfCell,
       uint32_t nHits,
       uint32_t maxNumberOfDoublets,
       cAHitNtupletGenerator::Counters *counters,
@@ -124,7 +125,7 @@ namespace KOKKOS_NAMESPACE {
   }
 
   KOKKOS_INLINE_FUNCTION void kernel_earlyDuplicateRemover(
-      const Kokkos::View<GPUCACell *, KokkosExecSpace, Restrict> &cells,
+      const Kokkos::View<GPUCACell *, KokkosDeviceMemSpace, RestrictUnmanaged> &cells,
       HitContainer *foundNtuplets,
       Quality *quality,
       const size_t idx) {
@@ -189,13 +190,14 @@ namespace KOKKOS_NAMESPACE {
   }
 
   KOKKOS_INLINE_FUNCTION void kernel_connect(
-      const Kokkos::View<cms::kokkos::AtomicPairCounter, KokkosExecSpace, Restrict> &apc1,
-      const Kokkos::View<cms::kokkos::AtomicPairCounter, KokkosExecSpace, Restrict> &apc2,  // just to zero them,
+      const Kokkos::View<cms::kokkos::AtomicPairCounter, KokkosDeviceMemSpace, RestrictUnmanaged> &apc1,
+      const Kokkos::View<cms::kokkos::AtomicPairCounter, KokkosDeviceMemSpace, RestrictUnmanaged>
+          &apc2,  // just to zero them,
       TrackingRecHit2DSOAView const *__restrict__ hhp,
-      const Kokkos::View<GPUCACell *, KokkosExecSpace, Restrict> &cells,
-      const Kokkos::View<uint32_t, KokkosExecSpace, Restrict> &nCells,
-      const Kokkos::View<CAConstants::CellNeighborsVector, KokkosExecSpace, Restrict> &cellNeighbors,
-      const Kokkos::View<GPUCACell::OuterHitOfCell *, KokkosExecSpace, Restrict> &isOuterHitOfCell,
+      const Kokkos::View<GPUCACell *, KokkosDeviceMemSpace, RestrictUnmanaged> &cells,
+      const Kokkos::View<uint32_t, KokkosDeviceMemSpace, RestrictUnmanaged> &nCells,
+      const Kokkos::View<CAConstants::CellNeighborsVector, KokkosDeviceMemSpace, RestrictUnmanaged> &cellNeighbors,
+      const Kokkos::View<GPUCACell::OuterHitOfCell *, KokkosDeviceMemSpace, RestrictUnmanaged> &isOuterHitOfCell,
       float hardCurvCut,
       float ptmin,
       float CAThetaCutBarrel,
@@ -274,10 +276,10 @@ namespace KOKKOS_NAMESPACE {
 
   KOKKOS_INLINE_FUNCTION void kernel_find_ntuplets(
       TrackingRecHit2DSOAView const *__restrict__ hhp,
-      const Kokkos::View<GPUCACell *, KokkosExecSpace, Restrict> &cells,
-      const Kokkos::View<CAConstants::CellTracksVector, KokkosExecSpace, Restrict> &cellTracks,
+      const Kokkos::View<GPUCACell *, KokkosDeviceMemSpace, RestrictUnmanaged> &cells,
+      const Kokkos::View<CAConstants::CellTracksVector, KokkosDeviceMemSpace, RestrictUnmanaged> &cellTracks,
       HitContainer *foundNtuplets,
-      const Kokkos::View<cms::kokkos::AtomicPairCounter, KokkosExecSpace, Restrict> &apc,
+      const Kokkos::View<cms::kokkos::AtomicPairCounter, KokkosDeviceMemSpace, RestrictUnmanaged> &apc,
       Quality *__restrict__ quality,
       unsigned int minHitsPerNtuplet,
       const size_t idx) {
@@ -293,16 +295,17 @@ namespace KOKKOS_NAMESPACE {
     if (doit) {
       GPUCACell::TmpTuple stack;
       stack.reset();
-      thisCell.find_ntuplets(
+      thisCell.find_ntuplets<6>(
           hh, cells.data(), cellTracks(), *foundNtuplets, apc(), quality, stack, minHitsPerNtuplet, pid < 3);
       assert(stack.empty());
       // printf("in %d found quadruplets: %d\n", cellIndex, apc->get());
     }
   }
 
-  KOKKOS_INLINE_FUNCTION void kernel_mark_used(TrackingRecHit2DSOAView const *__restrict__ hhp,  // not used
-                                               const Kokkos::View<GPUCACell *, KokkosExecSpace, Restrict> &cells,
-                                               const size_t idx) {
+  KOKKOS_INLINE_FUNCTION void kernel_mark_used(
+      TrackingRecHit2DSOAView const *__restrict__ hhp,  // not used
+      const Kokkos::View<GPUCACell *, KokkosDeviceMemSpace, RestrictUnmanaged> &cells,
+      const size_t idx) {
     auto &thisCell = cells(idx);
     if (!thisCell.tracks().empty())
       thisCell.theUsed |= 2;

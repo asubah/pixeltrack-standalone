@@ -1,19 +1,19 @@
-#ifndef RecoLocalTracker_SiPixelClusterizer_plugins_SiPixelRawToClusterGPUKernel_h
-#define RecoLocalTracker_SiPixelClusterizer_plugins_SiPixelRawToClusterGPUKernel_h
+#ifndef plugin_SiPixelClusterizer_alpaka_SiPixelRawToClusterGPUKernel_h
+#define plugin_SiPixelClusterizer_alpaka_SiPixelRawToClusterGPUKernel_h
 
 #include <algorithm>
+#include <optional>
+#include <utility>
 
-#include "AlpakaCore/alpakaCommon.h"
-
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaCore/alpakaMemory.h"
+#include "AlpakaDataFormats/alpaka/SiPixelClustersAlpaka.h"
+#include "AlpakaDataFormats/alpaka/SiPixelDigiErrorsAlpaka.h"
+#include "AlpakaDataFormats/alpaka/SiPixelDigisAlpaka.h"
 #include "AlpakaDataFormats/gpuClusteringConstants.h"
 #include "CondFormats/SiPixelFedCablingMapGPU.h"
-#include "CondFormats/SiPixelGainForHLTonGPU.h"
-
-#include "AlpakaDataFormats/SiPixelDigisAlpaka.h"
-#include "AlpakaDataFormats/SiPixelDigiErrorsAlpaka.h"
-#include "AlpakaDataFormats/SiPixelClustersAlpaka.h"
+#include "CondFormats/alpaka/SiPixelGainForHLTonGPU.h"
 #include "DataFormats/PixelErrors.h"
-#include "AlpakaDataFormats/gpuClusteringConstants.h"
 
 struct SiPixelFedCablingMapGPU;
 class SiPixelGainForHLTonGPU;
@@ -165,15 +165,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         auto fedId() const { return fedId_; }
 
       private:
-        AlpakaHostBuf<unsigned int> word_;
-        AlpakaHostBuf<unsigned char> fedId_;
+        cms::alpakatools::host_buffer<unsigned int[]> word_;
+        cms::alpakatools::host_buffer<unsigned char[]> fedId_;
       };
 
-      SiPixelRawToClusterGPUKernel()
-          : nModules_Clusters_h{cms::alpakatools::allocHostBuf<uint32_t>(2u)},
-            digis_d{SiPixelDigisAlpaka(0u)},
-            clusters_d{SiPixelClustersAlpaka(0u)},
-            digiErrors_d{SiPixelDigiErrorsAlpaka(0u, PixelFormatterErrors())} {};
+      SiPixelRawToClusterGPUKernel() : nModules_Clusters_h{cms::alpakatools::make_host_buffer<uint32_t[]>(2u)} {}
+
       ~SiPixelRawToClusterGPUKernel() = default;
 
       SiPixelRawToClusterGPUKernel(const SiPixelRawToClusterGPUKernel&) = delete;
@@ -195,22 +192,21 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                              Queue& queue);
 
       std::pair<SiPixelDigisAlpaka, SiPixelClustersAlpaka> getResults() {
-        auto pnModules_Clusters_h = alpaka::getPtrNative(nModules_Clusters_h);
-        digis_d.setNModulesDigis(pnModules_Clusters_h[0], nDigis);
-        clusters_d.setNClusters(pnModules_Clusters_h[1]);
-        return std::make_pair(std::move(digis_d), std::move(clusters_d));
+        digis_d->setNModulesDigis(nModules_Clusters_h[0], nDigis);
+        clusters_d->setNClusters(nModules_Clusters_h[1]);
+        return std::make_pair(std::move(*digis_d), std::move(*clusters_d));
       }
 
-      SiPixelDigiErrorsAlpaka&& getErrors() { return std::move(digiErrors_d); }
+      SiPixelDigiErrorsAlpaka&& getErrors() { return std::move(*digiErrors_d); }
 
     private:
       uint32_t nDigis = 0;
 
       // Data to be put in the event
-      AlpakaHostBuf<uint32_t> nModules_Clusters_h;
-      SiPixelDigisAlpaka digis_d;
-      SiPixelClustersAlpaka clusters_d;
-      SiPixelDigiErrorsAlpaka digiErrors_d;
+      cms::alpakatools::host_buffer<uint32_t[]> nModules_Clusters_h;
+      std::optional<SiPixelDigisAlpaka> digis_d;
+      std::optional<SiPixelClustersAlpaka> clusters_d;
+      std::optional<SiPixelDigiErrorsAlpaka> digiErrors_d;
     };
 
     // see RecoLocalTracker/SiPixelClusterizer
@@ -229,4 +225,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   }  // namespace pixelgpudetails
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoLocalTracker_SiPixelClusterizer_plugins_SiPixelRawToClusterGPUKernel_h
+#endif  // plugin_SiPixelClusterizer_alpaka_SiPixelRawToClusterGPUKernel_h

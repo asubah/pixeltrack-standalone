@@ -1,15 +1,16 @@
-#ifndef RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelRecHits_h
-#define RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelRecHits_h
+#ifndef plugin_SiPixelRecHits_alpaka_gpuPixelRecHits_h
+#define plugin_SiPixelRecHits_alpaka_gpuPixelRecHits_h
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <limits>
 
-#include "AlpakaCore/alpakaKernelCommon.h"
-
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaDataFormats/alpaka/BeamSpotAlpaka.h"
+#include "AlpakaDataFormats/alpaka/TrackingRecHit2DAlpaka.h"
 #include "CondFormats/pixelCPEforGPU.h"
-#include "AlpakaDataFormats/BeamSpotAlpaka.h"
-#include "AlpakaDataFormats/TrackingRecHit2DAlpaka.h"
 #include "DataFormats/approx_atan2.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
@@ -17,21 +18,21 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   namespace gpuPixelRecHits {
 
     struct getHits {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc& acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
                                     pixelCPEforGPU::ParamsOnGPU const* __restrict__ cpeParams,
                                     BeamSpotPOD const* __restrict__ bs,
                                     SiPixelDigisAlpaka::DeviceConstView const digis,
                                     uint32_t numElements,
                                     SiPixelClustersAlpaka::DeviceConstView const clusters,
-                                    TrackingRecHit2DSOAView* phits) const {
+                                    TrackingRecHit2DSoAView* phits) const {
         // FIXME
         // the compiler seems NOT to optimize loads from views (even in a simple test case)
         // The whole gimnastic here of copying or not is a pure heuristic exercise that seems to produce the fastest code with the above signature
         // not using views (passing a gazzilion of array pointers) seems to produce the fastest code (but it is harder to mantain)
 
-        assert(phits);
-        assert(cpeParams);
+        ALPAKA_ASSERT_OFFLOAD(phits);
+        ALPAKA_ASSERT_OFFLOAD(cpeParams);
 
         auto& hits = *phits;
 
@@ -42,11 +43,11 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         if (0 == blockIdx) {
           auto& agc = hits.averageGeometry();
           auto const& ag = cpeParams->averageGeometry();
-          constexpr auto numberOfLaddersInBarrel = TrackingRecHit2DSOAView::AverageGeometry::numberOfLaddersInBarrel;
+          constexpr auto numberOfLaddersInBarrel = TrackingRecHit2DSoAView::AverageGeometry::numberOfLaddersInBarrel;
           cms::alpakatools::for_each_element_in_block_strided(acc, numberOfLaddersInBarrel, [&](uint32_t il) {
-            agc.ladderZ[il] = ag.ladderZ[il] - bs->z;
             agc.ladderX[il] = ag.ladderX[il] - bs->x;
             agc.ladderY[il] = ag.ladderY[il] - bs->y;
+            agc.ladderZ[il] = ag.ladderZ[il] - bs->z;
             agc.ladderR[il] = sqrt(agc.ladderX[il] * agc.ladderX[il] + agc.ladderY[il] * agc.ladderY[il]);
             agc.ladderMinZ[il] = ag.ladderMinZ[il] - bs->z;
             agc.ladderMaxZ[il] = ag.ladderMaxZ[il] - bs->z;
@@ -54,7 +55,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           if (threadIdxLocal == 0) {
             agc.endCapZ[0] = ag.endCapZ[0] - bs->z;
             agc.endCapZ[1] = ag.endCapZ[1] - bs->z;
-            //         printf("endcapZ %f %f\n",agc.endCapZ[0],agc.endCapZ[1]);
+            //printf("endcapZ %f %f\n",agc.endCapZ[0],agc.endCapZ[1]);
           }
         }
 
@@ -78,7 +79,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           auto k = clusters.moduleStart(1 + blockIdx);
           while (digis.moduleInd(k) == InvId)
             ++k;
-          assert(digis.moduleInd(k) == me);
+          ALPAKA_ASSERT_OFFLOAD(digis.moduleInd(k) == me);
         }
 #endif
 
@@ -93,11 +94,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
           int nClusInIter = std::min(MaxHitsInIter, endClus - startClus);
           int lastClus = startClus + nClusInIter;
-          assert(nClusInIter <= nclus);
-          assert(nClusInIter > 0);
-          assert(lastClus <= nclus);
-
-          assert(nclus > MaxHitsInIter || (0 == startClus && nClusInIter == nclus && lastClus == nclus));
+          ALPAKA_ASSERT_OFFLOAD(nClusInIter <= nclus);
+          ALPAKA_ASSERT_OFFLOAD(nClusInIter > 0);
+          ALPAKA_ASSERT_OFFLOAD(lastClus <= nclus);
+          ALPAKA_ASSERT_OFFLOAD(nclus > MaxHitsInIter || (0 == startClus && nClusInIter == nclus && lastClus == nclus));
 
           // init
           cms::alpakatools::for_each_element_in_block_strided(acc, nClusInIter, [&](uint32_t ic) {
@@ -114,15 +114,14 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
           alpaka::syncBlockThreads(acc);
 
-          // one thead per "digi"
-
+          // one thread per "digi"
           const uint32_t blockDimension(alpaka::getWorkDiv<alpaka::Block, alpaka::Elems>(acc)[0u]);
           const auto& [firstElementIdxNoStride, endElementIdxNoStride] =
               cms::alpakatools::element_index_range_in_block(acc, first);
           uint32_t rowsColsFirstElementIdx = firstElementIdxNoStride;
           uint32_t rowsColsEndElementIdx = endElementIdxNoStride;
           for (uint32_t i = rowsColsFirstElementIdx; i < numElements; ++i) {
-            if (!cms::alpakatools::next_valid_element_index_strided(
+            if (not cms::alpakatools::next_valid_element_index_strided(
                     i, rowsColsFirstElementIdx, rowsColsEndElementIdx, blockDimension, numElements))
               break;
             auto id = digis.moduleInd(i);
@@ -136,12 +135,12 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
             const uint32_t x = digis.xx(i);
             const uint32_t y = digis.yy(i);
             cl -= startClus;
-            assert(cl >= 0);
-            assert(cl < MaxHitsInIter);
-            alpaka::atomicMin(acc, &clusParams.minRow[cl], x, alpaka::hierarchy::Blocks{});
-            alpaka::atomicMax(acc, &clusParams.maxRow[cl], x, alpaka::hierarchy::Blocks{});
-            alpaka::atomicMin(acc, &clusParams.minCol[cl], y, alpaka::hierarchy::Blocks{});
-            alpaka::atomicMax(acc, &clusParams.maxCol[cl], y, alpaka::hierarchy::Blocks{});
+            ALPAKA_ASSERT_OFFLOAD(cl >= 0);
+            ALPAKA_ASSERT_OFFLOAD(cl < MaxHitsInIter);
+            alpaka::atomicMin(acc, &clusParams.minRow[cl], x, alpaka::hierarchy::Threads{});
+            alpaka::atomicMax(acc, &clusParams.maxRow[cl], x, alpaka::hierarchy::Threads{});
+            alpaka::atomicMin(acc, &clusParams.minCol[cl], y, alpaka::hierarchy::Threads{});
+            alpaka::atomicMax(acc, &clusParams.maxCol[cl], y, alpaka::hierarchy::Threads{});
           }
 
           alpaka::syncBlockThreads(acc);
@@ -152,7 +151,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           uint32_t chargeFirstElementIdx = firstElementIdxNoStride;
           uint32_t chargeEndElementIdx = endElementIdxNoStride;
           for (uint32_t i = chargeFirstElementIdx; i < numElements; ++i) {
-            if (!cms::alpakatools::next_valid_element_index_strided(
+            if (not cms::alpakatools::next_valid_element_index_strided(
                     i, chargeFirstElementIdx, chargeEndElementIdx, blockDimension, numElements))
               break;
             auto id = digis.moduleInd(i);
@@ -164,26 +163,25 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
             if (cl < startClus || cl >= lastClus)
               continue;
             cl -= startClus;
-            assert(cl >= 0);
-            assert(cl < MaxHitsInIter);
+            ALPAKA_ASSERT_OFFLOAD(cl >= 0);
+            ALPAKA_ASSERT_OFFLOAD(cl < MaxHitsInIter);
             const uint32_t x = digis.xx(i);
             const uint32_t y = digis.yy(i);
             const int32_t ch = std::min(digis.adc(i), pixmx);
-            alpaka::atomicAdd(acc, &clusParams.charge[cl], ch, alpaka::hierarchy::Blocks{});
+            alpaka::atomicAdd(acc, &clusParams.charge[cl], ch, alpaka::hierarchy::Threads{});
             if (clusParams.minRow[cl] == x)
-              alpaka::atomicAdd(acc, &clusParams.Q_f_X[cl], ch, alpaka::hierarchy::Blocks{});
+              alpaka::atomicAdd(acc, &clusParams.Q_f_X[cl], ch, alpaka::hierarchy::Threads{});
             if (clusParams.maxRow[cl] == x)
-              alpaka::atomicAdd(acc, &clusParams.Q_l_X[cl], ch, alpaka::hierarchy::Blocks{});
+              alpaka::atomicAdd(acc, &clusParams.Q_l_X[cl], ch, alpaka::hierarchy::Threads{});
             if (clusParams.minCol[cl] == y)
-              alpaka::atomicAdd(acc, &clusParams.Q_f_Y[cl], ch, alpaka::hierarchy::Blocks{});
+              alpaka::atomicAdd(acc, &clusParams.Q_f_Y[cl], ch, alpaka::hierarchy::Threads{});
             if (clusParams.maxCol[cl] == y)
-              alpaka::atomicAdd(acc, &clusParams.Q_l_Y[cl], ch, alpaka::hierarchy::Blocks{});
+              alpaka::atomicAdd(acc, &clusParams.Q_l_Y[cl], ch, alpaka::hierarchy::Threads{});
           }
 
           alpaka::syncBlockThreads(acc);
 
           // next one cluster per thread...
-
           first = clusters.clusModuleStart(me) + startClus;
 
           cms::alpakatools::for_each_element_in_block_strided(acc, nClusInIter, [&](uint32_t ic) {
@@ -191,27 +189,23 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
             // this cannot happen anymore
             // TODO: was 'break', OTOH comment above says "should not happen", so hopefully 'return' is ok
-            if (h >= TrackingRecHit2DSOAView::maxHits())
+            if (h >= TrackingRecHit2DSoAView::maxHits()) {
               return;  // overflow...
-            assert(h < hits.nHits());
-            assert(h < clusters.clusModuleStart(me + 1));
+            }
+            ALPAKA_ASSERT_OFFLOAD(h < hits.nHits());
+            ALPAKA_ASSERT_OFFLOAD(h < clusters.clusModuleStart(me + 1));
 
             pixelCPEforGPU::position(cpeParams->commonParams(), cpeParams->detParams(me), clusParams, ic);
             pixelCPEforGPU::errorFromDB(cpeParams->commonParams(), cpeParams->detParams(me), clusParams, ic);
 
             // store it
-
             hits.charge(h) = clusParams.charge[ic];
-
             hits.detectorIndex(h) = me;
-
             float xl, yl;
             hits.xLocal(h) = xl = clusParams.xpos[ic];
             hits.yLocal(h) = yl = clusParams.ypos[ic];
-
             hits.clusterSizeX(h) = clusParams.xsize[ic];
             hits.clusterSizeY(h) = clusParams.ysize[ic];
-
             hits.xerrLocal(h) = clusParams.xerr[ic] * clusParams.xerr[ic];
             hits.yerrLocal(h) = clusParams.yerr[ic] * clusParams.yerr[ic];
 
@@ -240,4 +234,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   }  // namespace gpuPixelRecHits
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelRecHits_h
+#endif  // plugin_SiPixelRecHits_alpaka_gpuPixelRecHits_h

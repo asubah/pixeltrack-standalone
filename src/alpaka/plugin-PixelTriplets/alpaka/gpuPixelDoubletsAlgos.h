@@ -1,5 +1,5 @@
-#ifndef RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelDoubletsAlgos_h
-#define RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelDoubletsAlgos_h
+#ifndef plugin_PixelTriplets_alpaka_gpuPixelDoubletsAlgos_h
+#define plugin_PixelTriplets_alpaka_gpuPixelDoubletsAlgos_h
 
 #include <algorithm>
 #include <cmath>
@@ -7,13 +7,12 @@
 #include <cstdio>
 #include <limits>
 
-#include "AlpakaCore/alpakaKernelCommon.h"
-
-#include "AlpakaDataFormats/TrackingRecHit2DAlpaka.h"
 #include "AlpakaCore/VecArray.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaDataFormats/alpaka/TrackingRecHit2DAlpaka.h"
 #include "DataFormats/approx_atan2.h"
 
-#include "CAConstants.h"
+#include "../CAConstants.h"
 #include "GPUCACell.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
@@ -25,16 +24,16 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
     using CellNeighborsVector = CAConstants::CellNeighborsVector;
     using CellTracksVector = CAConstants::CellTracksVector;
 
-    template <typename T_Acc>
+    template <typename TAcc>
     ALPAKA_FN_ACC ALPAKA_FN_INLINE __attribute__((always_inline)) void doubletsFromHisto(
-        const T_Acc& acc,
+        const TAcc& acc,
         uint8_t const* __restrict__ layerPairs,
         uint32_t nPairs,
         GPUCACell* cells,
         uint32_t* nCells,
         CellNeighborsVector* cellNeighbors,
         CellTracksVector* cellTracks,
-        TrackingRecHit2DSOAView const& __restrict__ hh,
+        TrackingRecHit2DSoAView const& __restrict__ hh,
         GPUCACell::OuterHitOfCell* isOuterHitOfCell,
         int16_t const* __restrict__ phicuts,
         float const* __restrict__ minz,
@@ -56,11 +55,11 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
       bool isOuterLadder = ideal_cond;
 
-      using Hist = TrackingRecHit2DSOAView::Hist;
+      using Hist = TrackingRecHit2DSoAView::Hist;
 
       auto const& __restrict__ hist = hh.phiBinner();
       uint32_t const* __restrict__ offsets = hh.hitsLayerStart();
-      assert(offsets);
+      ALPAKA_ASSERT_OFFLOAD(offsets);
 
       auto layerSize = [=](uint8_t li) { return offsets[li + 1] - offsets[li]; };
 
@@ -68,7 +67,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       // If it should be much bigger, consider using a block-wide parallel prefix scan,
       // e.g. see  https://nvlabs.github.io/cub/classcub_1_1_warp_scan.html
       const int nPairsMax = CAConstants::maxNumberOfLayerPairs();  // add constexpr?
-      assert(nPairs <= nPairsMax);
+      ALPAKA_ASSERT_OFFLOAD(nPairs <= nPairsMax);
       auto& innerLayerCumulativeSize = alpaka::declareSharedVar<uint32_t[nPairsMax], __COUNTER__>(acc);
       auto& ntot = alpaka::declareSharedVar<uint32_t, __COUNTER__>(acc);
 
@@ -99,7 +98,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       uint32_t firstElementIdxY = firstElementIdxNoStrideY;
       uint32_t endElementIdxY = endElementIdxNoStrideY;
       for (uint32_t j = firstElementIdxY; j < ntot; ++j) {
-        if (!cms::alpakatools::next_valid_element_index_strided(
+        if (not cms::alpakatools::next_valid_element_index_strided(
                 j, firstElementIdxY, endElementIdxY, gridDimensionY, ntot))
           break;
 
@@ -107,13 +106,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           ;
         --pairLayerId;  // move to lower_bound ??
 
-        assert(pairLayerId < nPairs);
-        assert(j < innerLayerCumulativeSize[pairLayerId]);
-        assert(0 == pairLayerId || j >= innerLayerCumulativeSize[pairLayerId - 1]);
+        ALPAKA_ASSERT_OFFLOAD(pairLayerId < nPairs);
+        ALPAKA_ASSERT_OFFLOAD(j < innerLayerCumulativeSize[pairLayerId]);
+        ALPAKA_ASSERT_OFFLOAD(0 == pairLayerId || j >= innerLayerCumulativeSize[pairLayerId - 1]);
 
         uint8_t inner = layerPairs[2 * pairLayerId];
         uint8_t outer = layerPairs[2 * pairLayerId + 1];
-        assert(outer > inner);
+        ALPAKA_ASSERT_OFFLOAD(outer > inner);
 
         auto hoff = Hist::histOff(outer);
 
@@ -122,8 +121,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
         // printf("Hit in Layer %d %d %d %d\n", i, inner, pairLayerId, j);
 
-        assert(i >= offsets[inner]);
-        assert(i < offsets[inner + 1]);
+        ALPAKA_ASSERT_OFFLOAD(i >= offsets[inner]);
+        ALPAKA_ASSERT_OFFLOAD(i < offsets[inner + 1]);
 
         // found hit corresponding to our cuda thread, now do the job
         auto mi = hh.detectorIndex(i);
@@ -145,7 +144,7 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         if (doClusterCut) {
           // if ideal treat inner ladder as outer
           if (inner == 0)
-            assert(mi < 96);
+            ALPAKA_ASSERT_OFFLOAD(mi < 96);
           isOuterLadder = ideal_cond ? true : 0 == (mi / 8) % 2;  // only for B1/B2/B3 B4 is opposite, FPIX:noclue...
 
           // in any case we always test mes>0 ...
@@ -224,13 +223,13 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           uint32_t firstElementIdxX = firstElementIdxNoStrideX;
           uint32_t endElementIdxX = endElementIdxNoStrideX;
           for (uint32_t pIndex = firstElementIdxX; pIndex < maxpIndex; ++pIndex) {
-            if (!cms::alpakatools::next_valid_element_index_strided(
+            if (not cms::alpakatools::next_valid_element_index_strided(
                     pIndex, firstElementIdxX, endElementIdxX, blockDimensionX, maxpIndex))
               break;
 
             auto oi = p[pIndex];  // auto oi = __ldg(p); is not allowed since __ldg is device-only
-            assert(oi >= offsets[outer]);
-            assert(oi < offsets[outer + 1]);
+            ALPAKA_ASSERT_OFFLOAD(oi >= offsets[outer]);
+            ALPAKA_ASSERT_OFFLOAD(oi < offsets[outer + 1]);
             auto mo = hh.detectorIndex(oi);
             if (mo > 2000)
               continue;  //    invalid
@@ -273,4 +272,4 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   }  // namespace gpuPixelDoublets
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
 
-#endif  // RecoLocalTracker_SiPixelRecHits_plugins_gpuPixelDoupletsAlgos_h
+#endif  // plugin_PixelTriplets_alpaka_gpuPixelDoubletsAlgos_h

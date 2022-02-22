@@ -1,15 +1,19 @@
 #include <algorithm>
-#include <cstdlib>
 #include <chrono>
+#include <cstdlib>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
-#include <filesystem>
 #include <string>
 #include <vector>
 
-#include "AlpakaCore/alpakaConfigCommon.h"
-#include <tbb/task_scheduler_init.h>
+#include <tbb/global_control.h>
+#include <tbb/info.h>
+#include <tbb/task_arena.h>
 
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaCore/backend.h"
+#include "AlpakaCore/initialise.h"
 #include "EventProcessor.h"
 
 namespace {
@@ -19,19 +23,25 @@ namespace {
         << ": [--serial] [--tbb] [--cuda] [--numberOfThreads NT] [--numberOfStreams NS] [--maxEvents ME] [--data PATH] "
            "[--transfer]\n\n"
         << "Options\n"
+#ifdef ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED
         << " --serial            Use CPU Serial backend\n"
+#endif
+#ifdef ALPAKA_ACC_CPU_B_TBB_T_SEQ_ENABLED
         << " --tbb               Use CPU TBB backend\n"
+#endif
+#ifdef ALPAKA_ACC_GPU_CUDA_ENABLED
         << " --cuda              Use CUDA backend\n"
-        << " --numberOfThreads   Number of threads to use (default 1)\n"
-        << " --numberOfStreams   Number of concurrent events (default 0=numberOfThreads)\n"
+#endif
+        << " --numberOfThreads   Number of threads to use (default 1, use 0 to use all CPU cores)\n"
+        << " --numberOfStreams   Number of concurrent events (default 0 = numberOfThreads)\n"
         << " --maxEvents         Number of events to process (default -1 for all events in the input file)\n"
+        << " --runForMinutes     Continue processing the set of 1000 events until this many minutes have passed"
+           "(default -1 for disabled; conflicts with --maxEvents)\n"
         << " --data              Path to the 'data' directory (default 'data' in the directory of the executable)\n"
         << " --transfer          Transfer results from GPU to CPU (default is to leave them on GPU)\n"
         << " --empty             Ignore all producers (for testing only)\n"
         << std::endl;
   }
-
-  enum class Backend { SERIAL, TBB, CUDA };
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -41,18 +51,25 @@ int main(int argc, char** argv) {
   int numberOfThreads = 1;
   int numberOfStreams = 0;
   int maxEvents = -1;
+  int runForMinutes = -1;
   std::filesystem::path datadir;
   bool transfer = false;
   for (auto i = args.begin() + 1, e = args.end(); i != e; ++i) {
     if (*i == "-h" or *i == "--help") {
       print_help(args.front());
       return EXIT_SUCCESS;
+#ifdef ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED
     } else if (*i == "--serial") {
       backends.emplace_back(Backend::SERIAL);
+#endif
+#ifdef ALPAKA_ACC_CPU_B_TBB_T_SEQ_ENABLED
     } else if (*i == "--tbb") {
       backends.emplace_back(Backend::TBB);
+#endif
+#ifdef ALPAKA_ACC_GPU_CUDA_ENABLED
     } else if (*i == "--cuda") {
       backends.emplace_back(Backend::CUDA);
+#endif
     } else if (*i == "--numberOfThreads") {
       ++i;
       numberOfThreads = std::stoi(*i);
@@ -62,16 +79,26 @@ int main(int argc, char** argv) {
     } else if (*i == "--maxEvents") {
       ++i;
       maxEvents = std::stoi(*i);
+    } else if (*i == "--runForMinutes") {
+      ++i;
+      runForMinutes = std::stoi(*i);
     } else if (*i == "--data") {
       ++i;
       datadir = *i;
     } else if (*i == "--transfer") {
       transfer = true;
-    }  else {
+    } else {
       std::cout << "Invalid parameter " << *i << std::endl << std::endl;
       print_help(args.front());
       return EXIT_FAILURE;
     }
+  }
+  if (maxEvents >= 0 and runForMinutes >= 0) {
+    std::cout << "Got both --maxEvents and --runForMinutes, please give only one of them" << std::endl;
+    return EXIT_FAILURE;
+  }
+  if (numberOfThreads == 0) {
+    numberOfThreads = tbb::info::default_concurrency();
   }
   if (numberOfStreams == 0) {
     numberOfStreams = numberOfThreads;
@@ -84,19 +111,22 @@ int main(int argc, char** argv) {
     return EXIT_FAILURE;
   }
 
-  // TO DO: Debug TBB backend.
-  if (auto found = std::find(backends.begin(), backends.end(), Backend::TBB); found != backends.end()) {
-    numberOfStreams = 1;  // Study intra-event parallelization.
-    // TO DO: Warning: does not seem to be able to control the number of threads in TBB pool
-    // from here with a tbb::task_scheduler_init init(numThreads).
-    // Successfully managed to control the number of threads in TBB pool for now, by adding & updating
-    // tbb::task_scheduler_init init(2) directly inside:
-    // external/alpaka/include/alpaka/kernel/TaskKernelCpuTbbBlocks.hpp (and make clean_alpaka).
-
-    numberOfThreads = tbb::task_scheduler_init::
-        default_num_threads();  // By default, this number of threads is chosen in Alpaka for the TBB pool.
+  // Initialiase the selected backends
+#ifdef ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED
+  if (std::find(backends.begin(), backends.end(), Backend::SERIAL) != backends.end()) {
+    cms::alpakatools::initialise<alpaka_serial_sync::Platform>();
   }
-
+#endif
+#ifdef ALPAKA_ACC_CPU_B_TBB_T_SEQ_ENABLED
+  if (std::find(backends.begin(), backends.end(), Backend::TBB) != backends.end()) {
+    cms::alpakatools::initialise<alpaka_tbb_async::Platform>();
+  }
+#endif
+#ifdef ALPAKA_ACC_GPU_CUDA_ENABLED
+  if (std::find(backends.begin(), backends.end(), Backend::CUDA) != backends.end()) {
+    cms::alpakatools::initialise<alpaka_cuda_async::Platform>();
+  }
+#endif
 
   // Initialize EventProcessor
   std::vector<std::string> edmodules;
@@ -109,26 +139,41 @@ int main(int argc, char** argv) {
         edmodules.emplace_back(prefix + "TestProducer2");
       }
     };
-    
+
+#ifdef ALPAKA_ACC_CPU_B_SEQ_T_SEQ_ENABLED
     addModules("alpaka_serial_sync::", Backend::SERIAL);
+#endif
+#ifdef ALPAKA_ACC_CPU_B_TBB_T_SEQ_ENABLED
     addModules("alpaka_tbb_async::", Backend::TBB);
+#endif
+#ifdef ALPAKA_ACC_GPU_CUDA_ENABLED
     addModules("alpaka_cuda_async::", Backend::CUDA);
+#endif
     esmodules = {"IntESProducer"};
     if (transfer) {
       // add modules for transfer
     }
   }
   edm::EventProcessor processor(
-      maxEvents, numberOfStreams, std::move(edmodules), std::move(esmodules), datadir, false);
-  maxEvents = processor.maxEvents();
+      maxEvents, runForMinutes, numberOfStreams, std::move(edmodules), std::move(esmodules), datadir, false);
 
-  std::cout << "Processing " << maxEvents << " events, of which " << numberOfStreams << " concurrently, with "
-            << numberOfThreads << " threads." << std::endl;
+  if (runForMinutes < 0) {
+    std::cout << "Processing " << processor.maxEvents() << " events, of which " << numberOfStreams
+              << " concurrently, with " << numberOfThreads << " threads." << std::endl;
+  } else {
+    std::cout << "Processing for about " << runForMinutes << " minutes with " << numberOfStreams
+              << " concurrent events and " << numberOfThreads << " threads." << std::endl;
+  }
+
+  // Initialize the TBB thread pool
+  tbb::global_control tbb_max_threads{tbb::global_control::max_allowed_parallelism,
+                                      static_cast<std::size_t>(numberOfThreads)};
 
   // Run work
   auto start = std::chrono::high_resolution_clock::now();
   try {
-    processor.runToCompletion();
+    tbb::task_arena arena(numberOfThreads);
+    arena.execute([&] { processor.runToCompletion(); });
   } catch (std::runtime_error& e) {
     std::cout << "\n----------\nCaught std::runtime_error" << std::endl;
     std::cout << e.what() << std::endl;
@@ -162,6 +207,7 @@ int main(int argc, char** argv) {
   // Work done, report timing
   auto diff = stop - start;
   auto time = static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(diff).count()) / 1e6;
+  maxEvents = processor.processedEvents();
   std::cout << "Processed " << maxEvents << " events in " << std::scientific << time << " seconds, throughput "
             << std::defaultfloat << (maxEvents / time) << " events/s." << std::endl;
   return EXIT_SUCCESS;

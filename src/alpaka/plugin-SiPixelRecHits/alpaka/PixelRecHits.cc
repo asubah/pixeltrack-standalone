@@ -1,59 +1,62 @@
+#ifdef GPU_DEBUG
+#include <iostream>
+#endif
+
+#include "AlpakaCore/AllocatorPolicy.h"
+#include "AlpakaCore/alpakaConfig.h"
 #include "CondFormats/pixelCPEforGPU.h"
 
 #include "PixelRecHits.h"
 #include "gpuPixelRecHits.h"
 
-namespace {
-  struct setHitsLayerStart {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc& acc,
-                                  uint32_t const* __restrict__ hitsModuleStart,
-                                  pixelCPEforGPU::ParamsOnGPU const* cpeParams,
-                                  uint32_t* hitsLayerStart) const {
-      assert(0 == hitsModuleStart[0]);
-
-      cms::alpakatools::for_each_element_in_grid(acc, 11, [&](uint32_t i) {
-        hitsLayerStart[i] = hitsModuleStart[cpeParams->layerGeometry().layerStart[i]];
-#ifdef GPU_DEBUG
-        printf("LayerStart %d %d: %d\n", i, cpeParams->layerGeometry().layerStart[i], hitsLayerStart[i]);
-#endif
-      });
-    }
-  };
-}  // namespace
-
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
+
+  namespace {
+    struct setHitsLayerStart {
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc& acc,
+                                    uint32_t const* __restrict__ hitsModuleStart,
+                                    pixelCPEforGPU::ParamsOnGPU const* cpeParams,
+                                    uint32_t* hitsLayerStart) const {
+        ALPAKA_ASSERT_OFFLOAD(0 == hitsModuleStart[0]);
+
+        cms::alpakatools::for_each_element_in_grid(acc, 11, [&](uint32_t i) {
+          hitsLayerStart[i] = hitsModuleStart[cpeParams->layerGeometry().layerStart[i]];
+#ifdef GPU_DEBUG
+          printf("LayerStart %d %d: %d\n", i, cpeParams->layerGeometry().layerStart[i], hitsLayerStart[i]);
+#endif
+        });
+      }
+    };
+  }  // namespace
 
   namespace pixelgpudetails {
 
     TrackingRecHit2DAlpaka PixelRecHitGPUKernel::makeHitsAsync(SiPixelDigisAlpaka const& digis_d,
                                                                SiPixelClustersAlpaka const& clusters_d,
                                                                BeamSpotAlpaka const& bs_d,
-                                                               pixelCPEforGPU::ParamsOnGPU const* cpeParams) const {
+                                                               pixelCPEforGPU::ParamsOnGPU const* cpeParams,
+                                                               Queue& queue) const {
       auto nHits = clusters_d.nClusters();
-      TrackingRecHit2DAlpaka hits_d(nHits, cpeParams, clusters_d.clusModuleStart());
+      TrackingRecHit2DAlpaka hits_d(nHits, cpeParams, clusters_d.clusModuleStart(), queue);
 
       const int threadsPerBlockOrElementsPerThread = 128;
       const int blocks = digis_d.nModules();  // active modules (with digis)
-      const WorkDiv1& getHitsWorkDiv =
-          cms::alpakatools::make_workdiv(Vec1::all(blocks), Vec1::all(threadsPerBlockOrElementsPerThread));
+      const auto getHitsWorkDiv = cms::alpakatools::make_workdiv<Acc1D>(blocks, threadsPerBlockOrElementsPerThread);
 
 #ifdef GPU_DEBUG
       std::cout << "launching getHits kernel for " << blocks << " blocks" << std::endl;
 #endif
-
-      Queue queue(device);
-
       if (blocks) {  // protect from empty events
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(getHitsWorkDiv,
-                                                       gpuPixelRecHits::getHits(),
-                                                       cpeParams,
-                                                       bs_d.data(),
-                                                       digis_d.view(),
-                                                       digis_d.nDigis(),
-                                                       clusters_d.view(),
-                                                       hits_d.view()));
+                        alpaka::createTaskKernel<Acc1D>(getHitsWorkDiv,
+                                                        gpuPixelRecHits::getHits(),
+                                                        cpeParams,
+                                                        bs_d.data(),
+                                                        digis_d.view(),
+                                                        digis_d.nDigis(),
+                                                        clusters_d.view(),
+                                                        hits_d.view()));
       }
 
 #ifdef GPU_DEBUG
@@ -62,23 +65,27 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
       // assuming full warp of threads is better than a smaller number...
       if (nHits) {
-        const WorkDiv1& oneBlockWorkDiv = cms::alpakatools::make_workdiv(Vec1::all(1u), Vec1::all(32u));
+        const auto oneBlockWorkDiv = cms::alpakatools::make_workdiv<Acc1D>(1u, 32u);
         alpaka::enqueue(
             queue,
-            alpaka::createTaskKernel<Acc1>(
+            alpaka::createTaskKernel<Acc1D>(
                 oneBlockWorkDiv, setHitsLayerStart(), clusters_d.clusModuleStart(), cpeParams, hits_d.hitsLayerStart()));
       }
 
       if (nHits) {
-        cms::alpakatools::fillManyFromVector(
+        cms::alpakatools::fillManyFromVector<Acc1D>(
             hits_d.phiBinner(), 10, hits_d.c_iphi(), hits_d.c_hitsLayerStart(), nHits, 256, queue);
       }
 
-      //#ifdef GPU_DEBUG
-      //alpaka::wait(queue);
-      //#endif
-
+#ifdef GPU_DEBUG
       alpaka::wait(queue);
+#endif
+
+#if defined ALPAKA_ACC_CPU_B_TBB_T_SEQ_ASYNC_BACKEND && defined ALPAKA_DISABLE_CACHING_ALLOCATOR
+      // FIXME this is required to keep the host buffer inside hits_d alive; it could be removed once the host buffers are also stream-ordered
+      alpaka::wait(queue);
+#endif
+
       return hits_d;
     }
 

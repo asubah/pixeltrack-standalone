@@ -1,13 +1,13 @@
-#include "Framework/EventSetup.h"
-#include "Framework/Event.h"
-#include "Framework/PluginFactory.h"
-#include "Framework/EDProducer.h"
-
+#include "AlpakaCore/Product.h"
+#include "AlpakaCore/ScopedContext.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaDataFormats/alpaka/PixelTrackAlpaka.h"
+#include "AlpakaDataFormats/alpaka/TrackingRecHit2DAlpaka.h"
 #include "CAHitNtupletGeneratorOnGPU.h"
-#include "AlpakaDataFormats/PixelTrackAlpaka.h"
-#include "AlpakaDataFormats/TrackingRecHit2DAlpaka.h"
-
-#include "AlpakaCore/alpakaCommon.h"
+#include "Framework/EDProducer.h"
+#include "Framework/Event.h"
+#include "Framework/EventSetup.h"
+#include "Framework/PluginFactory.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
@@ -19,24 +19,25 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   private:
     void produce(edm::Event& iEvent, const edm::EventSetup& iSetup) override;
 
-    edm::EDGetTokenT<TrackingRecHit2DAlpaka> tokenHitGPU_;
-    edm::EDPutTokenT<PixelTrackAlpaka> tokenTrackGPU_;
+    edm::EDGetTokenT<cms::alpakatools::Product<Queue, TrackingRecHit2DAlpaka>> tokenHitGPU_;
+    edm::EDPutTokenT<cms::alpakatools::Product<Queue, PixelTrackAlpaka>> tokenTrackGPU_;
 
     CAHitNtupletGeneratorOnGPU gpuAlgo_;
   };
 
   CAHitNtupletAlpaka::CAHitNtupletAlpaka(edm::ProductRegistry& reg)
-      : tokenHitGPU_{reg.consumes<TrackingRecHit2DAlpaka>()},
-        tokenTrackGPU_{reg.produces<PixelTrackAlpaka>()},
+      : tokenHitGPU_{reg.consumes<cms::alpakatools::Product<Queue, TrackingRecHit2DAlpaka>>()},
+        tokenTrackGPU_{reg.produces<cms::alpakatools::Product<Queue, PixelTrackAlpaka>>()},
         gpuAlgo_(reg) {}
 
   void CAHitNtupletAlpaka::produce(edm::Event& iEvent, const edm::EventSetup& es) {
     auto bf = 0.0114256972711507;  // 1/fieldInGeV
 
-    auto const& hits = iEvent.get(tokenHitGPU_);
+    auto const& phits = iEvent.get(tokenHitGPU_);
+    cms::alpakatools::ScopedContextProduce<Queue> ctx{phits};
+    auto const& hits = ctx.get(phits);
 
-    Queue queue(device);
-    iEvent.emplace(tokenTrackGPU_, gpuAlgo_.makeTuplesAsync(hits, bf, queue));
+    ctx.emplace(iEvent, tokenTrackGPU_, gpuAlgo_.makeTuplesAsync(hits, bf, ctx.stream()));
   }
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE

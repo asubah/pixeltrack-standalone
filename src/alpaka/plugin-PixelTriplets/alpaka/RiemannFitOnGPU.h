@@ -1,27 +1,30 @@
+#ifndef plugin_PixelTriplets_alpaka_RiemannFitOnGPU_h
+#define plugin_PixelTriplets_alpaka_RiemannFitOnGPU_h
+
 //
 // Author: Felice Pantaleo, CERN
 //
 
+#include <cmath>
 #include <cstdint>
 
-#include "AlpakaCore/alpakaKernelCommon.h"
-
-#include "AlpakaDataFormats/TrackingRecHit2DAlpaka.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaDataFormats/alpaka/TrackingRecHit2DAlpaka.h"
 #include "CondFormats/pixelCPEforGPU.h"
 
-#include "RiemannFit.h"
 #include "HelixFitOnGPU.h"
+#include "RiemannFit.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
-  using HitsOnGPU = TrackingRecHit2DSOAView;
+  using HitsOnGPU = TrackingRecHit2DSoAView;
   using Tuples = pixelTrack::HitContainer;
   using OutputSoA = pixelTrack::TrackSoA;
 
   template <int N>
   struct kernelFastFit {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   Tuples const *__restrict__ foundNtuplets,
                                   CAConstants::TupleMultiplicity const *__restrict__ tupleMultiplicity,
                                   uint32_t nHits,
@@ -32,11 +35,11 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                   uint32_t offset) const {
       constexpr uint32_t hitsInFit = N;
 
-      assert(hitsInFit <= nHits);
+      ALPAKA_ASSERT_OFFLOAD(hitsInFit <= nHits);
 
-      assert(pfast_fit);
-      assert(foundNtuplets);
-      assert(tupleMultiplicity);
+      ALPAKA_ASSERT_OFFLOAD(pfast_fit);
+      ALPAKA_ASSERT_OFFLOAD(foundNtuplets);
+      ALPAKA_ASSERT_OFFLOAD(tupleMultiplicity);
 
       // look in bin for this hit multiplicity
 
@@ -54,9 +57,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
         // get it from the ntuple container (one to one to helix)
         auto tkid = *(tupleMultiplicity->begin(nHits) + tuple_idx);
-        assert(tkid < foundNtuplets->nbins());
+        ALPAKA_ASSERT_OFFLOAD(tkid < foundNtuplets->nbins());
 
-        assert(foundNtuplets->size(tkid) == nHits);
+        ALPAKA_ASSERT_OFFLOAD(foundNtuplets->size(tkid) == nHits);
 
         Rfit::Map3xNd<N> hits(phits + local_idx);
         Rfit::Map4d fast_fit(pfast_fit + local_idx);
@@ -79,10 +82,10 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
         Rfit::Fast_fit(hits, fast_fit);
 
         // no NaN here....
-        assert(fast_fit(0) == fast_fit(0));
-        assert(fast_fit(1) == fast_fit(1));
-        assert(fast_fit(2) == fast_fit(2));
-        assert(fast_fit(3) == fast_fit(3));
+        ALPAKA_ASSERT_OFFLOAD(fast_fit(0) == fast_fit(0));
+        ALPAKA_ASSERT_OFFLOAD(fast_fit(1) == fast_fit(1));
+        ALPAKA_ASSERT_OFFLOAD(fast_fit(2) == fast_fit(2));
+        ALPAKA_ASSERT_OFFLOAD(fast_fit(3) == fast_fit(3));
       });
 
     }  // kernel operator()
@@ -90,8 +93,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   template <int N>
   struct kernelCircleFit {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   CAConstants::TupleMultiplicity const *__restrict__ tupleMultiplicity,
                                   uint32_t nHits,
                                   double B,
@@ -100,8 +103,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                   double *__restrict__ pfast_fit_input,
                                   Rfit::circle_fit *circle_fit,
                                   uint32_t offset) const {
-      assert(circle_fit);
-      assert(N <= nHits);
+      ALPAKA_ASSERT_OFFLOAD(circle_fit);
+      ALPAKA_ASSERT_OFFLOAD(N <= nHits);
 
       // same as above...
 
@@ -135,8 +138,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
   template <int N>
   struct kernelLineFit {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   CAConstants::TupleMultiplicity const *__restrict__ tupleMultiplicity,
                                   uint32_t nHits,
                                   double B,
@@ -146,9 +149,9 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
                                   double *__restrict__ pfast_fit_input,
                                   Rfit::circle_fit *__restrict__ circle_fit,
                                   uint32_t offset) const {
-      assert(results);
-      assert(circle_fit);
-      assert(N <= nHits);
+      ALPAKA_ASSERT_OFFLOAD(results);
+      ALPAKA_ASSERT_OFFLOAD(circle_fit);
+      ALPAKA_ASSERT_OFFLOAD(N <= nHits);
 
       // same as above...
 
@@ -200,3 +203,5 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
   };   // struct
 
 }  // namespace ALPAKA_ACCELERATOR_NAMESPACE
+
+#endif  // plugin_PixelTriplets_alpaka_RiemannFitOnGPU_h

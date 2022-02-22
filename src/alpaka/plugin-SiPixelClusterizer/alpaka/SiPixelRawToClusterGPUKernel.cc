@@ -7,6 +7,7 @@
 **/
 
 // C++ includes
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -16,31 +17,33 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
-
-// Alpaka includes
-#include "AlpakaCore/prefixScan.h"
+#include <utility>
 
 // CMSSW includes
-#include "gpuCalibPixel.h"
-#include "gpuClusterChargeCut.h"
-#include "gpuClustering.h"
+#include "AlpakaCore/prefixScan.h"
+#include "AlpakaCore/alpakaConfig.h"
+#include "AlpakaCore/alpakaMemory.h"
+#include "AlpakaCore/alpakaWorkDiv.h"
 
 // local includes
+#include "../gpuClusterChargeCut.h"
 #include "SiPixelRawToClusterGPUKernel.h"
+#include "gpuCalibPixel.h"
+#include "gpuClustering.h"
 
 namespace ALPAKA_ACCELERATOR_NAMESPACE {
   namespace pixelgpudetails {
 
     SiPixelRawToClusterGPUKernel::WordFedAppender::WordFedAppender()
-        : word_{cms::alpakatools::allocHostBuf<unsigned int>(MAX_FED_WORDS)},
-          fedId_{cms::alpakatools::allocHostBuf<unsigned char>(MAX_FED_WORDS)} {}
+        : word_{cms::alpakatools::make_host_buffer<unsigned int[]>(MAX_FED_WORDS)},
+          fedId_{cms::alpakatools::make_host_buffer<unsigned char[]>(MAX_FED_WORDS)} {}
 
     void SiPixelRawToClusterGPUKernel::WordFedAppender::initializeWordFed(int fedId,
                                                                           unsigned int wordCounterGPU,
                                                                           const uint32_t *src,
                                                                           unsigned int length) {
-      std::memcpy(alpaka::getPtrNative(word_) + wordCounterGPU, src, sizeof(uint32_t) * length);
-      std::memset(alpaka::getPtrNative(fedId_) + wordCounterGPU / 2, fedId - 1200, length / 2);
+      std::memcpy(word_.data() + wordCounterGPU, src, sizeof(uint32_t) * length);
+      std::memset(fedId_.data() + wordCounterGPU / 2, fedId - 1200, length / 2);
     }
 
     ////////////////////
@@ -348,8 +351,8 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
     // Kernel to perform Raw to Digi conversion
     struct RawToDigi_kernel {
-      template <typename T_Acc>
-      ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+      template <typename TAcc>
+      ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                     const SiPixelFedCablingMapGPU *cablingMap,
                                     const unsigned char *modToUnp,
                                     const uint32_t wordCounter,
@@ -479,17 +482,17 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 namespace pixelgpudetails {
 
   struct fillHitsModuleStart {
-    template <typename T_Acc>
-    ALPAKA_FN_ACC void operator()(const T_Acc &acc,
+    template <typename TAcc>
+    ALPAKA_FN_ACC void operator()(const TAcc &acc,
                                   uint32_t const *__restrict__ cluStart,
                                   uint32_t *__restrict__ moduleStart) const {
-      assert(gpuClustering::MaxNumModules < 2048);  // easy to extend at least till 32*1024
+      ALPAKA_ASSERT_OFFLOAD(gpuClustering::MaxNumModules < 2048);  // easy to extend at least till 32*1024
 
 #ifndef NDEBUG
-      const uint32_t blockIdxLocal(alpaka::getIdx<alpaka::Grid, alpaka::Blocks>(acc)[0u]);
-      assert(0 == blockIdxLocal);
-      const uint32_t gridDimension(alpaka::getWorkDiv<alpaka::Grid, alpaka::Blocks>(acc)[0u]);
-      assert(1 == gridDimension);
+      [[maybe_unused]] const uint32_t blockIdxLocal(alpaka::getIdx<alpaka::Grid, alpaka::Blocks>(acc)[0u]);
+      ALPAKA_ASSERT_OFFLOAD(0 == blockIdxLocal);
+      [[maybe_unused]] const uint32_t gridDimension(alpaka::getWorkDiv<alpaka::Grid, alpaka::Blocks>(acc)[0u]);
+      ALPAKA_ASSERT_OFFLOAD(1 == gridDimension);
 #endif
 
       // limit to MaxHitsInModule;
@@ -507,17 +510,17 @@ namespace pixelgpudetails {
       alpaka::syncBlockThreads(acc);
 
 #ifdef GPU_DEBUG
-      assert(0 == moduleStart[0]);
+      ALPAKA_ASSERT_OFFLOAD(0 == moduleStart[0]);
       auto c0 = std::min(gpuClustering::maxHitsInModule(), cluStart[0]);
-      assert(c0 == moduleStart[1]);
-      assert(moduleStart[1024] >= moduleStart[1023]);
-      assert(moduleStart[1025] >= moduleStart[1024]);
-      assert(moduleStart[gpuClustering::MaxNumModules] >= moduleStart[1025]);
+      ALPAKA_ASSERT_OFFLOAD(c0 == moduleStart[1]);
+      ALPAKA_ASSERT_OFFLOAD(moduleStart[1024] >= moduleStart[1023]);
+      ALPAKA_ASSERT_OFFLOAD(moduleStart[1025] >= moduleStart[1024]);
+      ALPAKA_ASSERT_OFFLOAD(moduleStart[gpuClustering::MaxNumModules] >= moduleStart[1025]);
 
       //for (int i = first, iend = gpuClustering::MaxNumModules + 1; i < iend; i += blockDim.x) {
       cms::alpakatools::for_each_element_in_block_strided(acc, gpuClustering::MaxNumModules + 1, [&](uint32_t i) {
         if (0 != i)
-          assert(moduleStart[i] >= moduleStart[i - i]);
+          ALPAKA_ASSERT_OFFLOAD(moduleStart[i] >= moduleStart[i - i]);
         // [BPX1, BPX2, BPX3, BPX4,  FP1,  FP2,  FP3,  FN1,  FN2,  FN3, LAST_VALID]
         // [   0,   96,  320,  672, 1184, 1296, 1408, 1520, 1632, 1744,       1856]
         if (i == 96 || i == 1184 || i == 1744 || i == gpuClustering::MaxNumModules)
@@ -559,55 +562,54 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
       std::cout << "decoding " << wordCounter << " digis. Max is " << pixelgpudetails::MAX_FED_WORDS << std::endl;
 #endif
 
-      digis_d = SiPixelDigisAlpaka(pixelgpudetails::MAX_FED_WORDS);
+      digis_d = SiPixelDigisAlpaka(queue, pixelgpudetails::MAX_FED_WORDS);
       if (includeErrors) {
-        digiErrors_d = SiPixelDigiErrorsAlpaka(pixelgpudetails::MAX_FED_WORDS, std::move(errors));
+        digiErrors_d = SiPixelDigiErrorsAlpaka(queue, pixelgpudetails::MAX_FED_WORDS, std::move(errors));
       }
-      clusters_d = SiPixelClustersAlpaka(gpuClustering::MaxNumModules);
+      clusters_d = SiPixelClustersAlpaka(queue, gpuClustering::MaxNumModules);
 
       if (wordCounter)  // protect in case of empty event....
       {
-#ifdef ALPAKA_ACC_GPU_CUDA_ENABLED
+#ifdef ALPAKA_ACC_GPU_CUDA_ASYNC_BACKEND
         const int threadsPerBlockOrElementsPerThread = 512;
 #else
         // NB: MPORTANT: This could be tuned to benefit from innermost loop.
         const int threadsPerBlockOrElementsPerThread = 32;
 #endif
-        const uint32_t blocks =
-            (wordCounter + threadsPerBlockOrElementsPerThread - 1) / threadsPerBlockOrElementsPerThread;  // fill it all
-        const WorkDiv1 &workDiv =
-            cms::alpakatools::make_workdiv(Vec1::all(blocks), Vec1::all(threadsPerBlockOrElementsPerThread));
+        // fill it all
+        const uint32_t blocks = cms::alpakatools::divide_up_by(wordCounter, threadsPerBlockOrElementsPerThread);
+        const auto workDiv = cms::alpakatools::make_workdiv<Acc1D>(blocks, threadsPerBlockOrElementsPerThread);
 
-        assert(0 == wordCounter % 2);
+        ALPAKA_ASSERT_OFFLOAD(0 == wordCounter % 2);
         // wordCounter is the total no of words in each event to be trasfered on device
-        auto word_d = cms::alpakatools::allocDeviceBuf<uint32_t>(wordCounter);
+        auto word_d = cms::alpakatools::make_device_buffer<uint32_t[]>(queue, wordCounter);
         // NB: IMPORTANT: fedId_d: In legacy, wordCounter elements are allocated.
         // However, only the first half of elements end up eventually used:
         // hence, here, only wordCounter/2 elements are allocated.
-        auto fedId_d = cms::alpakatools::allocDeviceBuf<uint8_t>(wordCounter / 2);
+        auto fedId_d = cms::alpakatools::make_device_buffer<uint8_t[]>(queue, wordCounter / 2);
 
         alpaka::memcpy(queue, word_d, wordFed.word(), wordCounter);
         alpaka::memcpy(queue, fedId_d, wordFed.fedId(), wordCounter / 2);
 
         // Launch rawToDigi kernel
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(workDiv,
-                                                       RawToDigi_kernel(),
-                                                       cablingMap,
-                                                       modToUnp,
-                                                       wordCounter,
-                                                       alpaka::getPtrNative(word_d),
-                                                       alpaka::getPtrNative(fedId_d),
-                                                       digis_d.xx(),
-                                                       digis_d.yy(),
-                                                       digis_d.adc(),
-                                                       digis_d.pdigi(),
-                                                       digis_d.rawIdArr(),
-                                                       digis_d.moduleInd(),
-                                                       digiErrors_d.error(),
-                                                       useQualityInfo,
-                                                       includeErrors,
-                                                       debug));
+                        alpaka::createTaskKernel<Acc1D>(workDiv,
+                                                        RawToDigi_kernel(),
+                                                        cablingMap,
+                                                        modToUnp,
+                                                        wordCounter,
+                                                        word_d.data(),
+                                                        fedId_d.data(),
+                                                        digis_d->xx(),
+                                                        digis_d->yy(),
+                                                        digis_d->adc(),
+                                                        digis_d->pdigi(),
+                                                        digis_d->rawIdArr(),
+                                                        digis_d->moduleInd(),
+                                                        digiErrors_d->error(),
+                                                        useQualityInfo,
+                                                        includeErrors,
+                                                        debug));
 
 #ifdef GPU_DEBUG
         alpaka::wait(queue);
@@ -618,57 +620,54 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
           digiErrors_d.copyErrorToHostAsync(stream);
         }
 #endif
-        alpaka::wait(queue);  // Wait for work to be completed before end of scope.
       }
       // End of Raw2Digi and passing data for clustering
 
       {
         // clusterizer ...
         using namespace gpuClustering;
-#ifdef ALPAKA_ACC_GPU_CUDA_ENABLED
-        const int threadsPerBlockOrElementsPerThread = 256;
+#ifdef ALPAKA_ACC_GPU_CUDA_ASYNC_BACKEND
+        const auto threadsPerBlockOrElementsPerThread = 256;
 #else
         // NB: MPORTANT: This could be tuned to benefit from innermost loop.
-        const int threadsPerBlockOrElementsPerThread = 32;
+        const auto threadsPerBlockOrElementsPerThread = 32;
 #endif
-        const int blocks =
-            (std::max(int(wordCounter), int(gpuClustering::MaxNumModules)) + threadsPerBlockOrElementsPerThread - 1) /
-            threadsPerBlockOrElementsPerThread;
-        const WorkDiv1 &workDiv =
-            cms::alpakatools::make_workdiv(Vec1::all(blocks), Vec1::all(threadsPerBlockOrElementsPerThread));
+        const auto blocks = cms::alpakatools::divide_up_by(std::max<int>(wordCounter, gpuClustering::MaxNumModules),
+                                                           threadsPerBlockOrElementsPerThread);
+        const auto workDiv = cms::alpakatools::make_workdiv<Acc1D>(blocks, threadsPerBlockOrElementsPerThread);
 
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(workDiv,
-                                                       gpuCalibPixel::calibDigis(),
-                                                       isRun2,
-                                                       digis_d.moduleInd(),
-                                                       digis_d.c_xx(),
-                                                       digis_d.c_yy(),
-                                                       digis_d.adc(),
-                                                       //gains,
-                                                       gains->getVpedestals(),
-                                                       gains->getRangeAndCols(),
-                                                       gains->getFields(),
-                                                       wordCounter,
-                                                       clusters_d.moduleStart(),
-                                                       clusters_d.clusInModule(),
-                                                       clusters_d.clusModuleStart()));
+                        alpaka::createTaskKernel<Acc1D>(workDiv,
+                                                        gpuCalibPixel::calibDigis(),
+                                                        isRun2,
+                                                        digis_d->moduleInd(),
+                                                        digis_d->c_xx(),
+                                                        digis_d->c_yy(),
+                                                        digis_d->adc(),
+                                                        gains,
+                                                        wordCounter,
+                                                        clusters_d->moduleStart(),
+                                                        clusters_d->clusInModule(),
+                                                        clusters_d->clusModuleStart()));
 #ifdef GPU_DEBUG
         alpaka::wait(queue);
         std::cout << "CUDA countModules kernel launch with " << blocks << " blocks of "
                   << threadsPerBlockOrElementsPerThread << " threadsPerBlockOrElementsPerThread\n";
 #endif
 
-        alpaka::enqueue(
-            queue,
-            alpaka::createTaskKernel<Acc1>(
-                workDiv, countModules(), digis_d.c_moduleInd(), clusters_d.moduleStart(), digis_d.clus(), wordCounter));
+        alpaka::enqueue(queue,
+                        alpaka::createTaskKernel<Acc1D>(workDiv,
+                                                        countModules(),
+                                                        digis_d->c_moduleInd(),
+                                                        clusters_d->moduleStart(),
+                                                        digis_d->clus(),
+                                                        wordCounter));
 
-        auto moduleStartFirstElement = cms::alpakatools::createDeviceView<uint32_t>(clusters_d.moduleStart(), 1u);
+        auto moduleStartFirstElement =
+            cms::alpakatools::make_device_view(alpaka::getDev(queue), clusters_d->moduleStart(), 1u);
+        alpaka::memcpy(queue, nModules_Clusters_h, moduleStartFirstElement);
 
-        alpaka::memcpy(queue, nModules_Clusters_h, moduleStartFirstElement, 1u);
-
-        const WorkDiv1 &workDivMaxNumModules = cms::alpakatools::make_workdiv(Vec1::all(MaxNumModules), Vec1::all(256));
+        const auto workDivMaxNumModules = cms::alpakatools::make_workdiv<Acc1D>(MaxNumModules, 256);
         // NB: With present findClus() / chargeCut() algorithm,
         // threadPerBlock (GPU) or elementsPerThread (CPU) = 256 show optimal performance.
         // Though, it does not have to be the same number for CPU/GPU cases.
@@ -679,16 +678,16 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 #endif
 
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(workDivMaxNumModules,
-                                                       findClus(),
-                                                       digis_d.c_moduleInd(),
-                                                       digis_d.c_xx(),
-                                                       digis_d.c_yy(),
-                                                       clusters_d.c_moduleStart(),
-                                                       clusters_d.clusInModule(),
-                                                       clusters_d.moduleId(),
-                                                       digis_d.clus(),
-                                                       wordCounter));
+                        alpaka::createTaskKernel<Acc1D>(workDivMaxNumModules,
+                                                        findClus(),
+                                                        digis_d->c_moduleInd(),
+                                                        digis_d->c_xx(),
+                                                        digis_d->c_yy(),
+                                                        clusters_d->c_moduleStart(),
+                                                        clusters_d->clusInModule(),
+                                                        clusters_d->moduleId(),
+                                                        digis_d->clus(),
+                                                        wordCounter));
 
 #ifdef GPU_DEBUG
         alpaka::wait(queue);
@@ -696,44 +695,37 @@ namespace ALPAKA_ACCELERATOR_NAMESPACE {
 
         // apply charge cut
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(workDivMaxNumModules,
-                                                       clusterChargeCut(),
-                                                       digis_d.moduleInd(),
-                                                       digis_d.c_adc(),
-                                                       clusters_d.c_moduleStart(),
-                                                       clusters_d.clusInModule(),
-                                                       clusters_d.c_moduleId(),
-                                                       digis_d.clus(),
-                                                       wordCounter));
+                        alpaka::createTaskKernel<Acc1D>(workDivMaxNumModules,
+                                                        clusterChargeCut(),
+                                                        digis_d->moduleInd(),
+                                                        digis_d->c_adc(),
+                                                        clusters_d->c_moduleStart(),
+                                                        clusters_d->clusInModule(),
+                                                        clusters_d->c_moduleId(),
+                                                        digis_d->clus(),
+                                                        wordCounter));
 
         // count the module start indices already here (instead of
         // rechits) so that the number of clusters/hits can be made
         // available in the rechit producer without additional points of
         // synchronization/ExternalWork
 
-        const WorkDiv1 &workDivOneBlock = cms::alpakatools::make_workdiv(Vec1::all(1u), Vec1::all(1024u));
-
         // MUST be ONE block
+        const auto workDivOneBlock = cms::alpakatools::make_workdiv<Acc1D>(1u, 1024u);
         alpaka::enqueue(queue,
-                        alpaka::createTaskKernel<Acc1>(workDivOneBlock,
-                                                       ::pixelgpudetails::fillHitsModuleStart(),
-                                                       clusters_d.c_clusInModule(),
-                                                       clusters_d.clusModuleStart()));
+                        alpaka::createTaskKernel<Acc1D>(workDivOneBlock,
+                                                        ::pixelgpudetails::fillHitsModuleStart(),
+                                                        clusters_d->c_clusInModule(),
+                                                        clusters_d->clusModuleStart()));
 
         // last element holds the number of all clusters
-        auto clusModuleStartView = cms::alpakatools::createDeviceView<uint32_t>(clusters_d.clusModuleStart(),
-                                                                                gpuClustering::MaxNumModules + 1);
-        const auto clusModuleStartLastElement =
-            AlpakaDeviceSubView<uint32_t>(clusModuleStartView, 1u, gpuClustering::MaxNumModules);
-        // slice on host
-        auto nModules_Clusters_1_h{cms::alpakatools::allocHostBuf<uint32_t>(1u)};
-        auto p_nModules_Clusters_1_h = alpaka::getPtrNative(nModules_Clusters_1_h);
+        const auto clusModuleStartLastElement = cms::alpakatools::make_device_view(
+            alpaka::getDev(queue),
+            const_cast<uint32_t const *>(clusters_d->clusModuleStart() + gpuClustering::MaxNumModules),
+            1u);
+        auto nModules_Clusters_h_1 = cms::alpakatools::make_host_view(nModules_Clusters_h.data() + 1, 1u);
+        alpaka::memcpy(queue, nModules_Clusters_h_1, clusModuleStartLastElement);
 
-        alpaka::memcpy(queue, nModules_Clusters_1_h, clusModuleStartLastElement, 1u);
-        // Wait for memory transfer to host to complete before looking at host data!
-        alpaka::wait(queue);
-        auto p_nModules_Clusters_h = alpaka::getPtrNative(nModules_Clusters_h);
-        p_nModules_Clusters_h[1] = p_nModules_Clusters_1_h[0];
       }  // end clusterizer scope
     }
   }  // namespace pixelgpudetails
