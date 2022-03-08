@@ -24,7 +24,7 @@ endif
 
 # Build flags
 USER_CXXFLAGS :=
-HOST_CXXFLAGS := -O2 -fPIC -fdiagnostics-show-option -felide-constructors -fmessage-length=0 -fno-math-errno -ftree-vectorize -fvisibility-inlines-hidden --param vect-max-version-for-alias-checks=50 -msse3 -pipe -pthread -Werror=address -Wall -Werror=array-bounds -Wno-attributes -Werror=conversion-null -Werror=delete-non-virtual-dtor -Wno-deprecated -Werror=format-contains-nul -Werror=format -Wno-long-long -Werror=main -Werror=missing-braces -Werror=narrowing -Wno-non-template-friend -Wnon-virtual-dtor -Werror=overflow -Werror=overlength-strings -Wparentheses -Werror=pointer-arith -Wno-psabi -Werror=reorder -Werror=return-local-addr -Wreturn-type -Werror=return-type -Werror=sign-compare -Werror=strict-aliasing -Wstrict-overflow -Werror=switch -Werror=type-limits -Wunused -Werror=unused-but-set-variable -Wno-unused-local-typedefs -Werror=unused-value -Wno-error=unused-variable -Wno-vla -Werror=write-strings
+HOST_CXXFLAGS := -O2 -fPIC -fdiagnostics-show-option -felide-constructors -fmessage-length=0 -fno-math-errno -ftree-vectorize -fvisibility-inlines-hidden --param vect-max-version-for-alias-checks=50 -msse3 -pipe -pthread -Werror=address -Wall -Werror=array-bounds -Wno-attributes -Werror=conversion-null -Werror=delete-non-virtual-dtor -Wno-deprecated -Werror=format-contains-nul -Werror=format -Wno-long-long -Werror=main -Werror=missing-braces -Werror=narrowing -Wno-non-template-friend -Wnon-virtual-dtor -Werror=overflow -Werror=overlength-strings -Wparentheses -Werror=pointer-arith -Wno-psabi -Werror=reorder -Werror=return-local-addr -Wreturn-type -Werror=return-type -Werror=sign-compare -Werror=strict-aliasing -Wstrict-overflow -Werror=switch -Werror=type-limits -Wunused -Werror=unused-but-set-variable -Wno-unused-local-typedefs -Werror=unused-value -Wno-error=unused-variable -Wno-vla -Werror=write-strings -Wfatal-errors
 export CXXFLAGS := -std=c++17 $(HOST_CXXFLAGS) $(USER_CXXFLAGS) -g
 export LDFLAGS := -O2 -fPIC -pthread -Wl,-E -lstdc++fs -ldl
 export LDFLAGS_NVCC := -ccbin $(CXX) --linker-options '-E' --linker-options '-lstdc++fs'
@@ -119,6 +119,12 @@ export TBB_DEPS := $(TBB_LIB)
 export TBB_CXXFLAGS := -isystem $(TBB_BASE)/include -DTBB_SUPPRESS_DEPRECATED_MESSAGES -DTBB_PREVIEW_NUMA_SUPPORT -DTBB_PREVIEW_TASK_GROUP_EXTENSIONS
 export TBB_LDFLAGS := -L$(TBB_LIBDIR) -ltbb
 export TBB_NVCC_CXXFLAGS :=
+# The libstdc++ library used by the devtools on RHEL 7 / CentOS 7 requires a workaround because
+# some STL containers do not support the allocator traits, even when using more recent compilers
+ifneq ($(shell [ -f /etc/redhat-release ] && grep -q 'release 7' /etc/redhat-release && which $(CXX) | grep devtoolset),)
+TBB_CXXFLAGS += -DTBB_ALLOCATOR_TRAITS_BROKEN
+TBB_CMAKEFLAGS += -DCMAKE_CXX_FLAGS=-DTBB_ALLOCATOR_TRAITS_BROKEN
+endif
 
 EIGEN_BASE := $(EXTERNAL_BASE)/eigen
 export EIGEN_DEPS := $(EIGEN_BASE)
@@ -127,8 +133,8 @@ export EIGEN_LDFLAGS :=
 export EIGEN_NVCC_CXXFLAGS := --diag-suppress 20014
 
 BOOST_BASE := /usr
-# Minimum required version of Boost, e.g. 1.73.0
-BOOST_MIN_VERSION := 107300
+# Minimum required version of Boost, e.g. 1.78.0
+BOOST_MIN_VERSION := 107800
 # Check if an external version of Boost is present and recent enough
 ifeq ($(wildcard $(BOOST_BASE)/include/boost/version.hpp),)
 NEED_BOOST := true
@@ -455,17 +461,17 @@ $(foreach target,$(TARGETS_ALL),$(eval $(call FORMAT_template,$(target))))
 format: $(patsubst %,format_%,$(TARGETS_ALL))
 
 clean:
-	rm -fR lib obj test $(TARGETS_ALL)
+	rm -fR $(LIB_DIR) $(OBJ_DIR) $(TEST_DIR) $(TARGETS_ALL)
 
 distclean: | clean
-	rm -fR external .original_env
+	rm -fR $(EXTERNAL_BASE) .original_env
 
 dataclean:
-	rm -fR data/*.tar.gz data/*.bin data/data_ok
+	rm -fR $(DATA_BASE)/*.tar.gz $(DATA_BASE)/*.bin $(DATA_BASE)/data_ok
 
 define CLEAN_template
 clean_$(1):
-	rm -fR lib/$(1) obj/$(1) test/$(1) $(1)
+	rm -fR $(LIB_DIR)/$(1) $(OBJ_DIR)/$(1) $(TEST_DIR)/$(1) $(1)
 endef
 $(foreach target,$(TARGETS_ALL),$(eval $(call CLEAN_template,$(target))))
 
@@ -511,7 +517,7 @@ $(EIGEN_BASE):
 	# from Eigen master branch as of 2021.08.18
 	git clone -b cms/master/82dd3710dac619448f50331c1d6a35da673f764a https://github.com/cms-externals/eigen-git-mirror.git $@
 	# include all Patatrack updates
-	cd $@ && git reset --hard 733e6166b2f8b4edd23da33985187fd60903e9ca
+	cd $@ && git reset --hard 6294f3471cc18068079ec6af8ceccebe34b40021
 
 # Boost
 .PHONY: external_boost
@@ -521,8 +527,8 @@ external_boost: $(BOOST_BASE)
 $(BOOST_BASE): CXXFLAGS:=
 $(BOOST_BASE):
 	$(eval BOOST_TMP := $(shell mktemp -d))
-	curl -L -s -S https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.bz2 | tar xj -C $(BOOST_TMP)
-	cd $(BOOST_TMP)/boost_1_76_0 && ./bootstrap.sh && ./b2 install --prefix=$@ --without-graph_parallel --without-mpi --without-python
+	curl -L -s -S https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.tar.bz2 | tar xj -C $(BOOST_TMP)
+	cd $(BOOST_TMP)/boost_1_78_0 && ./bootstrap.sh && ./b2 install --prefix=$@ --without-graph_parallel --without-mpi --without-python
 	@rm -rf $(BOOST_TMP)
 	$(eval undefine BOOST_TMP)
 
