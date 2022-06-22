@@ -13,11 +13,11 @@ namespace cms {
   namespace cuda {
     namespace device {
       namespace impl {
-        // Additional layer of types to distinguish from host::unique_ptr
-        class DeviceDeleter {
+        // Additional layer of types to distinguish device::unique_ptr from host::unique_ptr
+        class Deleter {
         public:
-          DeviceDeleter() = default;  // for edm::Wrapper
-          DeviceDeleter(int device, cudaStream_t stream) : device_{device}, stream_{stream} {}
+          Deleter() = default;  // for edm::Wrapper
+          Deleter(int device, cudaStream_t stream) : device_{device}, stream_{stream} {}
 
           void operator()(void *ptr) {
             if (device_ >= 0) {
@@ -32,7 +32,7 @@ namespace cms {
       }  // namespace impl
 
       template <typename T>
-      using unique_ptr = std::unique_ptr<T, impl::DeviceDeleter>;
+      using unique_ptr = std::unique_ptr<T, impl::Deleter>;
 
       namespace impl {
         template <typename T>
@@ -57,7 +57,7 @@ namespace cms {
       int dev = currentDevice();
       void *mem = allocate_device(dev, sizeof(T), stream);
       return typename device::impl::make_device_unique_selector<T>::non_array{reinterpret_cast<T *>(mem),
-                                                                              device::impl::DeviceDeleter{dev, stream}};
+                                                                              device::impl::Deleter{dev, stream}};
     }
 
     template <typename T>
@@ -69,9 +69,10 @@ namespace cms {
       int dev = currentDevice();
       void *mem = allocate_device(dev, n * sizeof(element_type), stream);
       return typename device::impl::make_device_unique_selector<T>::unbounded_array{
-          reinterpret_cast<element_type *>(mem), device::impl::DeviceDeleter{dev, stream}};
+          reinterpret_cast<element_type *>(mem), device::impl::Deleter{dev, stream}};
     }
 
+    // Forbid arrays of known bounds (to match std::unique_ptr)
     template <typename T, typename... Args>
     typename device::impl::make_device_unique_selector<T>::bounded_array make_device_unique(Args &&...) = delete;
 
@@ -82,7 +83,7 @@ namespace cms {
       int dev = currentDevice();
       void *mem = allocate_device(dev, sizeof(T), stream);
       return typename device::impl::make_device_unique_selector<T>::non_array{reinterpret_cast<T *>(mem),
-                                                                              device::impl::DeviceDeleter{dev, stream}};
+                                                                              device::impl::Deleter{dev, stream}};
     }
 
     template <typename T>
@@ -92,9 +93,10 @@ namespace cms {
       int dev = currentDevice();
       void *mem = allocate_device(dev, n * sizeof(element_type), stream);
       return typename device::impl::make_device_unique_selector<T>::unbounded_array{
-          reinterpret_cast<element_type *>(mem), device::impl::DeviceDeleter{dev, stream}};
+          reinterpret_cast<element_type *>(mem), device::impl::Deleter{dev, stream}};
     }
 
+    // Forbid arrays of known bounds (to match std::unique_ptr)
     template <typename T, typename... Args>
     typename device::impl::make_device_unique_selector<T>::bounded_array make_device_unique_uninitialized(Args &&...) =
         delete;
