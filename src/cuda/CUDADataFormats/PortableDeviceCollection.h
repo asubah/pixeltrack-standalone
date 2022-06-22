@@ -1,0 +1,60 @@
+#ifndef DataFormats_interface_PortableDeviceCollection_h
+#define DataFormats_interface_PortableDeviceCollection_h
+
+#include <optional>
+#include <type_traits>
+
+#include "CUDACore/device_unique_ptr.h"
+
+// generic SoA-based product in device memory
+template <typename T>
+class PortableDeviceCollection {
+
+public:
+  using Layout = T;
+  using View = typename Layout::View;
+  using Buffer = cms::cuda::device::unique_ptr<std::byte[]>;
+
+  PortableDeviceCollection() = default;
+
+  PortableDeviceCollection(int32_t elements, cudaStream_t stream)
+      : buffer_{cms::cuda::make_device_unique<std::byte[]>(Layout::computeDataSize(elements), stream)},
+        layout_{buffer_.get(), elements},
+        view_{layout_} {
+    // CUDA device memory uses a default alignment of at least 128 bytes
+    assert(reinterpret_cast<uintptr_t>(buffer_.get()) % Layout::alignment == 0);
+  }
+
+  // non-copyable
+  PortableDeviceCollection(PortableDeviceCollection const &) = delete;
+  PortableDeviceCollection &operator=(PortableDeviceCollection const &) = delete;
+
+  // movable
+  PortableDeviceCollection(PortableDeviceCollection &&other) = default;
+  PortableDeviceCollection &operator=(PortableDeviceCollection &&other) = default;
+
+  // default destructor
+  ~PortableDeviceCollection() = default;
+
+  // access the View
+  View &view() { return view_; } 
+  View const &view() const { return view_; } 
+
+  View &operator*() { return view_; }
+  View const &operator*() const { return view_; }
+
+  View *operator->() { return &view_; }
+  View const *operator->() const { return &view_; }
+
+  Buffer &buffer() { return buffer_; }
+  Buffer const &buffer() const { return buffer_; }
+
+  size_t const bufferSize() { return layout_.metadata().byteSize(); }
+
+private:
+  Buffer buffer_;
+  Layout layout_;
+  View view_;
+};
+
+#endif  // DataFormats_interface_PortableDeviceCollection_h
