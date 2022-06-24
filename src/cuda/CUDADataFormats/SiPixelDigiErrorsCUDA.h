@@ -3,10 +3,10 @@
 
 #include <cuda_runtime.h>
 
-#include "CUDACore/SimpleVector.h"
-#include "CUDACore/device_unique_ptr.h"
-#include "CUDACore/host_unique_ptr.h"
-#include "DataFormats/PixelErrors.h"
+#include "CUDADataFormats/PortableDeviceCollection.h"
+#include "CUDADataFormats/PortableHostCollection.h"
+
+#include "DataFormats/PixelErrorsSoA.h"
 
 class SiPixelDigiErrorsCUDA {
 public:
@@ -21,20 +21,16 @@ public:
 
   const PixelFormatterErrors& formatterErrors() const { return formatterErrors_h; }
 
-  cms::cuda::SimpleVector<PixelErrorCompact>* error() { return error_d.get(); }
-  cms::cuda::SimpleVector<PixelErrorCompact> const* error() const { return error_d.get(); }
-  cms::cuda::SimpleVector<PixelErrorCompact> const* c_error() const { return error_d.get(); }
-
-  using HostDataError =
-      std::pair<cms::cuda::SimpleVector<PixelErrorCompact>, cms::cuda::host::unique_ptr<PixelErrorCompact[]>>;
-  HostDataError dataErrorToHostAsync(cudaStream_t stream) const;
+  auto error() { return *error_d; }
+  auto const error() const { return *error_d; }
+  auto const c_error() const { return *error_d; }
 
   void copyErrorToHostAsync(cudaStream_t stream);
 
 private:
-  cms::cuda::device::unique_ptr<PixelErrorCompact[]> data_d;
-  cms::cuda::device::unique_ptr<cms::cuda::SimpleVector<PixelErrorCompact>> error_d;
-  cms::cuda::host::unique_ptr<cms::cuda::SimpleVector<PixelErrorCompact>> error_h;
+  PortableDeviceCollection<PixelErrorCompactSoALayout<>> error_d;
+  PortableHostCollection<PixelErrorCompactSoALayout<>> error_h;
+
   PixelFormatterErrors formatterErrors_h;
 };
 
