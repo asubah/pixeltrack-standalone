@@ -592,7 +592,7 @@ namespace pixelgpudetails {
           digis_d.pdigi(),
           digis_d.rawIdArr(),
           digis_d.moduleInd(),
-          digiErrors_d.error(),  // returns nullptr if default-constructed
+          digiErrors_d.error(),
           useQualityInfo,
           includeErrors,
           debug);
