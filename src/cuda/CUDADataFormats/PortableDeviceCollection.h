@@ -1,18 +1,17 @@
 #ifndef DataFormats_interface_PortableDeviceCollection_h
 #define DataFormats_interface_PortableDeviceCollection_h
 
-#include <optional>
-#include <type_traits>
+#include <cstdlib>
 
 #include "CUDACore/device_unique_ptr.h"
 
 // generic SoA-based product in device memory
 template <typename T>
 class PortableDeviceCollection {
-
 public:
   using Layout = T;
   using View = typename Layout::View;
+  using ConstView = typename Layout::ConstView;
   using Buffer = cms::cuda::device::unique_ptr<std::byte[]>;
 
   PortableDeviceCollection() = default;
@@ -26,30 +25,33 @@ public:
   }
 
   // non-copyable
-  PortableDeviceCollection(PortableDeviceCollection const &) = delete;
-  PortableDeviceCollection &operator=(PortableDeviceCollection const &) = delete;
+  PortableDeviceCollection(PortableDeviceCollection const&) = delete;
+  PortableDeviceCollection& operator=(PortableDeviceCollection const&) = delete;
 
   // movable
-  PortableDeviceCollection(PortableDeviceCollection &&other) = default;
-  PortableDeviceCollection &operator=(PortableDeviceCollection &&other) = default;
+  PortableDeviceCollection(PortableDeviceCollection&& other) = default;
+  PortableDeviceCollection& operator=(PortableDeviceCollection&& other) = default;
 
   // default destructor
   ~PortableDeviceCollection() = default;
 
   // access the View
-  View &view() { return view_; } 
-  View const &view() const { return view_; } 
+  View& view() { return view_; }
+  ConstView const& view() const { return view_; }
+  ConstView const& const_view() const { return view_; }
 
-  View &operator*() { return view_; }
-  View const &operator*() const { return view_; }
+  View& operator*() { return view_; }
+  ConstView const& operator*() const { return view_; }
 
-  View *operator->() { return &view_; }
-  View const *operator->() const { return &view_; }
+  View* operator->() { return &view_; }
+  ConstView const* operator->() const { return &view_; }
 
-  Buffer &buffer() { return buffer_; }
-  Buffer const &buffer() const { return buffer_; }
+  // access the Buffer
+  Buffer& buffer() { return buffer_; }
+  Buffer const& buffer() const { return buffer_; }
+  Buffer const& const_buffer() const { return buffer_; }
 
-  size_t const bufferSize() { return layout_.metadata().byteSize(); }
+  size_t bufferSize() const { return layout_.metadata().byteSize(); }
 
 private:
   Buffer buffer_;
