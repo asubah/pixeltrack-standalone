@@ -5,11 +5,12 @@
 #include <cstdio>
 #include <limits>
 
+#include "CUDACore/cuda_assert.h"
 #include "CUDADataFormats/BeamSpotCUDA.h"
 #include "CUDADataFormats/TrackingRecHit2DCUDA.h"
-#include "DataFormats/approx_atan2.h"
-#include "CUDACore/cuda_assert.h"
 #include "CondFormats/pixelCPEforGPU.h"
+#include "DataFormats/SiPixelDigisDeviceLayout.h"
+#include "DataFormats/approx_atan2.h"
 
 namespace gpuPixelRecHits {
 
