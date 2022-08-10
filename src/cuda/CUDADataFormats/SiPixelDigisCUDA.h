@@ -27,12 +27,12 @@ public:
   uint32_t nDigis() const { return hc->nDigis(); }
 
   PDC_SiPixelDigisDeviceLayout::View deviceView() { return *dc; };
-  PDC_SiPixelDigisDeviceLayout::View const deviceView() const { return *dc; };
-  PDC_SiPixelDigisDeviceLayout::View const c_deviceView() const { return *dc; };
+  PDC_SiPixelDigisDeviceLayout::ConstView deviceView() const { return *dc; };
+  PDC_SiPixelDigisDeviceLayout::ConstView c_deviceView() const { return *dc; };
 
   PHC_SiPixelDigisHostLayout::View hostView() { return *hc; };
-  PHC_SiPixelDigisHostLayout::View const hostView() const { return *hc; };
-  PHC_SiPixelDigisHostLayout::View const c_hostView() const { return *hc; };
+  PHC_SiPixelDigisHostLayout::ConstView hostView() const { return *hc; };
+  PHC_SiPixelDigisHostLayout::ConstView c_hostView() const { return *hc; };
 
   cms::cuda::host::unique_ptr<uint16_t[]> adcToHostAsync(cudaStream_t stream) const;
   cms::cuda::host::unique_ptr<int32_t[]> clusToHostAsync(cudaStream_t stream) const;
