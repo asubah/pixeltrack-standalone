@@ -11,6 +11,7 @@ class PortableHostCollection {
 public:
   using Layout = T;
   using View = typename Layout::View;
+  using ConstView = typename Layout::ConstView;
   using Buffer = cms::cuda::host::unique_ptr<std::byte[]>;
 
   PortableHostCollection() = default;
@@ -34,28 +35,33 @@ public:
   }
 
   // non-copyable
-  PortableHostCollection(PortableHostCollection const &) = delete;
-  PortableHostCollection &operator=(PortableHostCollection const &) = delete;
+  PortableHostCollection(PortableHostCollection const&) = delete;
+  PortableHostCollection& operator=(PortableHostCollection const&) = delete;
 
   // movable
-  PortableHostCollection(PortableHostCollection &&other) = default;
-  PortableHostCollection &operator=(PortableHostCollection &&other) = default;
+  PortableHostCollection(PortableHostCollection&& other) = default;
+  PortableHostCollection& operator=(PortableHostCollection&& other) = default;
 
   // default destructor
   ~PortableHostCollection() = default;
 
   // access the View
-  View &view() { return view_; } 
-  View const &view() const { return view_; } 
+  View& view() { return view_; }
+  ConstView const& view() const { return view_; }
+  ConstView const& const_view() const { return view_; }
 
-  View &operator*() { return view_; }
-  View const &operator*() const { return view_; }
+  View& operator*() { return view_; }
+  ConstView const& operator*() const { return view_; }
 
-  View *operator->() { return &view_; }
-  View const *operator->() const { return &view_; }
+  View* operator->() { return &view_; }
+  ConstView const* operator->() const { return &view_; }
 
-  Buffer &buffer() { return buffer_; }
-  Buffer const &buffer() const { return buffer_; }
+  // access the Buffer
+  Buffer& buffer() { return buffer_; }
+  Buffer const& buffer() const { return buffer_; }
+  Buffer const& const_buffer() const { return buffer_; }
+
+  size_t bufferSize() const { return layout_.metadata().byteSize(); }
 
 private:
   Buffer buffer_;

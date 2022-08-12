@@ -5,17 +5,18 @@
 #include <cstdio>
 #include <limits>
 
+#include "CUDACore/cuda_assert.h"
 #include "CUDADataFormats/BeamSpotCUDA.h"
 #include "CUDADataFormats/TrackingRecHit2DCUDA.h"
-#include "DataFormats/approx_atan2.h"
-#include "CUDACore/cuda_assert.h"
 #include "CondFormats/pixelCPEforGPU.h"
+#include "DataFormats/SiPixelDigisDeviceLayout.h"
+#include "DataFormats/approx_atan2.h"
 
 namespace gpuPixelRecHits {
 
   __global__ void getHits(pixelCPEforGPU::ParamsOnGPU const* __restrict__ cpeParams,
                           BeamSpotPOD const* __restrict__ bs,
-                          PDC_SiPixelDigisDeviceLayout::View digis,
+                          PDC_SiPixelDigisDeviceLayout::ConstView digis,
                           int numElements,
                           SiPixelClustersCUDA::DeviceConstView const* __restrict__ pclusters,
                           TrackingRecHit2DSOAView* phits) {
