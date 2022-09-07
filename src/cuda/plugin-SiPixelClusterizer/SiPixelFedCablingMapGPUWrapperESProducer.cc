@@ -30,8 +30,8 @@ void SiPixelFedCablingMapGPUWrapperESProducer::produce(edm::EventSetup& eventSet
   {
     std::ifstream in(data_ / "cablingMap.bin", std::ios::binary);
     in.exceptions(std::ifstream::badbit | std::ifstream::failbit | std::ifstream::eofbit);
-    SiPixelFedCablingMapGPU obj;
-    in.read(reinterpret_cast<char*>(&obj), sizeof(SiPixelFedCablingMapGPU));
+    PHC_SiPixelFedCablingMap obj(pixelgpudetails::MAX_SIZE);
+    in.read(reinterpret_cast<char*>(obj.buffer().get()), obj.bufferSize());
     unsigned int modToUnpDefSize;
     in.read(reinterpret_cast<char*>(&modToUnpDefSize), sizeof(unsigned int));
     std::vector<unsigned char> modToUnpDefault(modToUnpDefSize);

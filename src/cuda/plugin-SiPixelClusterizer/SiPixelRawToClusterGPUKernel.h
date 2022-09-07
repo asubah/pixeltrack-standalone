@@ -7,6 +7,7 @@
 #include "CUDADataFormats/SiPixelDigisCUDA.h"
 #include "CUDADataFormats/SiPixelDigiErrorsCUDA.h"
 #include "CUDADataFormats/SiPixelClustersCUDA.h"
+#include "CondFormats/SiPixelFedCablingMapGPU.h"
 #include "CUDACore/SimpleVector.h"
 #include "CUDACore/host_unique_ptr.h"
 #include "CUDACore/host_noncached_unique_ptr.h"
@@ -168,7 +169,7 @@ namespace pixelgpudetails {
     SiPixelRawToClusterGPUKernel& operator=(SiPixelRawToClusterGPUKernel&&) = delete;
 
     void makeClustersAsync(bool isRun2,
-                           const SiPixelFedCablingMapGPU* cablingMap,
+                           PDC_SiPixelFedCablingMap::ConstView cablingMap,
                            const unsigned char* modToUnp,
                            const SiPixelGainForHLTonGPU* gains,
                            const WordFedAppender& wordFed,

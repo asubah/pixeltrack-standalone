@@ -64,13 +64,14 @@ namespace pixelgpudetails {
 
   __device__ bool isBarrel(uint32_t rawId) { return (1 == ((rawId >> 25) & 0x7)); }
 
-  __device__ pixelgpudetails::DetIdGPU getRawId(const SiPixelFedCablingMapGPU *cablingMap,
+  __device__ pixelgpudetails::DetIdGPU getRawId(PDC_SiPixelFedCablingMap::ConstView cablingMap,
                                                 uint8_t fed,
                                                 uint32_t link,
                                                 uint32_t roc) {
     uint32_t index = fed * MAX_LINK * MAX_ROC + (link - 1) * MAX_ROC + roc;
+    auto cmap = cablingMap[index];
     pixelgpudetails::DetIdGPU detId = {
-        cablingMap->RawId[index], cablingMap->rocInDet[index], cablingMap->moduleId[index]};
+        cmap.RawId(), cmap.rocInDet(), cmap.moduleId()};
     return detId;
   }
 
@@ -194,7 +195,7 @@ namespace pixelgpudetails {
   __device__ bool dcolIsValid(uint32_t dcol, uint32_t pxid) { return ((dcol < 26) & (2 <= pxid) & (pxid < 162)); }
 
   __device__ uint8_t checkROC(
-      uint32_t errorWord, uint8_t fedId, uint32_t link, const SiPixelFedCablingMapGPU *cablingMap, bool debug = false) {
+      uint32_t errorWord, uint8_t fedId, uint32_t link, PDC_SiPixelFedCablingMap::ConstView cablingMap, bool debug = false) {
     uint8_t errorType = (errorWord >> pixelgpudetails::ROC_shift) & pixelgpudetails::ERROR_mask;
     if (errorType < 25)
       return 0;
@@ -204,8 +205,9 @@ namespace pixelgpudetails {
       case (25): {
         errorFound = true;
         uint32_t index = fedId * MAX_LINK * MAX_ROC + (link - 1) * MAX_ROC + 1;
-        if (index > 1 && index <= cablingMap->size) {
-          if (!(link == cablingMap->link[index] && 1 == cablingMap->roc[index]))
+        if (index > 1 && index <= cablingMap.size()) {
+            auto cmap = cablingMap[index];
+          if (!(link == cmap.link() && 1 == cmap.roc()))
             errorFound = false;
         }
         if (debug and errorFound)
@@ -272,7 +274,7 @@ namespace pixelgpudetails {
   __device__ uint32_t getErrRawID(uint8_t fedId,
                                   uint32_t errWord,
                                   uint32_t errorType,
-                                  const SiPixelFedCablingMapGPU *cablingMap,
+                                  PDC_SiPixelFedCablingMap::ConstView cablingMap,
                                   bool debug = false) {
     uint32_t rID = 0xffffffff;
 
@@ -347,7 +349,7 @@ namespace pixelgpudetails {
   }
 
   // Kernel to perform Raw to Digi conversion
-  __global__ void RawToDigi_kernel(const SiPixelFedCablingMapGPU *cablingMap,
+  __global__ void RawToDigi_kernel(PDC_SiPixelFedCablingMap::ConstView cablingMap,
                                    const unsigned char *modToUnp,
                                    const uint32_t wordCounter,
                                    const uint32_t *word,
@@ -410,7 +412,7 @@ namespace pixelgpudetails {
 
       uint32_t index = fedId * MAX_LINK * MAX_ROC + (link - 1) * MAX_ROC + roc;
       if (useQualityInfo) {
-        skipROC = cablingMap->badRocs[index];
+        skipROC = cablingMap[index].badRocs();
         if (skipROC)
           continue;
       }
@@ -539,7 +541,7 @@ namespace pixelgpudetails {
 
   // Interface to outside
   void SiPixelRawToClusterGPUKernel::makeClustersAsync(bool isRun2,
-                                                       const SiPixelFedCablingMapGPU *cablingMap,
+                                                       PDC_SiPixelFedCablingMap::ConstView cablingMap,
                                                        const unsigned char *modToUnp,
                                                        const SiPixelGainForHLTonGPU *gains,
                                                        const WordFedAppender &wordFed,
@@ -580,22 +582,21 @@ namespace pixelgpudetails {
           fedId_d.get(), wordFed.fedId(), wordCounter * sizeof(uint8_t) / 2, cudaMemcpyDefault, stream));
 
       // Launch rawToDigi kernel
-      RawToDigi_kernel<<<blocks, threadsPerBlock, 0, stream>>>(
-          cablingMap,
-          modToUnp,
-          wordCounter,
-          word_d.get(),
-          fedId_d.get(),
-          digis_d.deviceView().xx(),
-          digis_d.deviceView().yy(),
-          digis_d.deviceView().adc(),
-          digis_d.deviceView().pdigi(),
-          digis_d.deviceView().rawIdArr(),
-          digis_d.deviceView().moduleInd(),
-          digiErrors_d.error(),
-          useQualityInfo,
-          includeErrors,
-          debug);
+      RawToDigi_kernel<<<blocks, threadsPerBlock, 0, stream>>>(cablingMap,
+                                                               modToUnp,
+                                                               wordCounter,
+                                                               word_d.get(),
+                                                               fedId_d.get(),
+                                                               digis_d.deviceView().xx(),
+                                                               digis_d.deviceView().yy(),
+                                                               digis_d.deviceView().adc(),
+                                                               digis_d.deviceView().pdigi(),
+                                                               digis_d.deviceView().rawIdArr(),
+                                                               digis_d.deviceView().moduleInd(),
+                                                               digiErrors_d.error(),
+                                                               useQualityInfo,
+                                                               includeErrors,
+                                                               debug);
       cudaCheck(cudaGetLastError());
 #ifdef GPU_DEBUG
       cudaDeviceSynchronize();
