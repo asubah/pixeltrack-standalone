@@ -7,7 +7,9 @@
 
 #include "CUDACore/cuda_assert.h"
 #include "CUDADataFormats/BeamSpotCUDA.h"
+#include "CUDADataFormats/BeamSpotCUDA.h"
 #include "CUDADataFormats/TrackingRecHit2DCUDA.h"
+#include "CUDADataFormats/SiPixelClustersCUDA.h"
 #include "CondFormats/pixelCPEforGPU.h"
 #include "DataFormats/SiPixelDigisDeviceLayout.h"
 #include "DataFormats/approx_atan2.h"
@@ -18,7 +20,7 @@ namespace gpuPixelRecHits {
                           BeamSpotPOD const* __restrict__ bs,
                           PDC_SiPixelDigisDeviceLayout::ConstView digis,
                           int numElements,
-                          SiPixelClustersCUDA::DeviceConstView const* __restrict__ pclusters,
+                          PDC_SiPixelClustersCUDA::ConstView pclusters,
                           TrackingRecHit2DSOAView* phits) {
     // FIXME
     // the compiler seems NOT to optimize loads from views (even in a simple test case)
@@ -31,7 +33,7 @@ namespace gpuPixelRecHits {
     auto& hits = *phits;
 
     // auto const digis = *pdigis;  // the copy is intentional!
-    auto const& clusters = *pclusters;
+    auto clusters = pclusters;
 
     // copy average geometry corrected by beamspot . FIXME (move it somewhere else???)
     if (0 == blockIdx.x) {
@@ -62,15 +64,15 @@ namespace gpuPixelRecHits {
     // as usual one block per module
     __shared__ ClusParams clusParams;
 
-    auto me = clusters.moduleId(blockIdx.x);
-    int nclus = clusters.clusInModule(me);
+    auto me = clusters[blockIdx.x].moduleId();
+    int nclus = clusters[me].clusInModule();
 
     if (0 == nclus)
       return;
 
 #ifdef GPU_DEBUG
     if (threadIdx.x == 0) {
-      auto k = clusters.moduleStart(1 + blockIdx.x);
+      auto k = clusters[1 + blockIdx.x].moduleStart();
       while (digis.moduleInd(k) == InvId)
         ++k;
       assert(digis.moduleInd(k) == me);
@@ -80,11 +82,11 @@ namespace gpuPixelRecHits {
 #ifdef GPU_DEBUG
     if (me % 100 == 1)
       if (threadIdx.x == 0)
-        printf("hitbuilder: %d clusters in module %d. will write at %d\n", nclus, me, clusters.clusModuleStart(me));
+        printf("hitbuilder: %d clusters in module %d. will write at %d\n", nclus, me, clusters[me].clusModuleStart());
 #endif
 
     for (int startClus = 0, endClus = nclus; startClus < endClus; startClus += MaxHitsInIter) {
-      auto first = clusters.moduleStart(1 + blockIdx.x);
+      auto first = clusters[1 + blockIdx.x].moduleStart();
 
       int nClusInIter = std::min(MaxHitsInIter, endClus - startClus);
       int lastClus = startClus + nClusInIter;
@@ -168,7 +170,7 @@ namespace gpuPixelRecHits {
 
       // next one cluster per thread...
 
-      first = clusters.clusModuleStart(me) + startClus;
+      first = clusters[me].clusModuleStart() + startClus;
 
       for (int ic = threadIdx.x; ic < nClusInIter; ic += blockDim.x) {
         auto h = first + ic;  // output index in global memory
@@ -177,7 +179,7 @@ namespace gpuPixelRecHits {
         if (h >= TrackingRecHit2DSOAView::maxHits())
           break;  // overflow...
         assert(h < hits.nHits());
-        assert(h < clusters.clusModuleStart(me + 1));
+        assert(h < clusters[me + 1].clusModuleStart());
 
         pixelCPEforGPU::position(cpeParams->commonParams(), cpeParams->detParams(me), clusParams, ic);
         pixelCPEforGPU::errorFromDB(cpeParams->commonParams(), cpeParams->detParams(me), clusParams, ic);

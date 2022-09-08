@@ -70,8 +70,7 @@ namespace pixelgpudetails {
                                                 uint32_t roc) {
     uint32_t index = fed * MAX_LINK * MAX_ROC + (link - 1) * MAX_ROC + roc;
     auto cmap = cablingMap[index];
-    pixelgpudetails::DetIdGPU detId = {
-        cmap.RawId(), cmap.rocInDet(), cmap.moduleId()};
+    pixelgpudetails::DetIdGPU detId = {cmap.RawId(), cmap.rocInDet(), cmap.moduleId()};
     return detId;
   }
 
@@ -194,8 +193,11 @@ namespace pixelgpudetails {
 
   __device__ bool dcolIsValid(uint32_t dcol, uint32_t pxid) { return ((dcol < 26) & (2 <= pxid) & (pxid < 162)); }
 
-  __device__ uint8_t checkROC(
-      uint32_t errorWord, uint8_t fedId, uint32_t link, PDC_SiPixelFedCablingMap::ConstView cablingMap, bool debug = false) {
+  __device__ uint8_t checkROC(uint32_t errorWord,
+                              uint8_t fedId,
+                              uint32_t link,
+                              PDC_SiPixelFedCablingMap::ConstView cablingMap,
+                              bool debug = false) {
     uint8_t errorType = (errorWord >> pixelgpudetails::ROC_shift) & pixelgpudetails::ERROR_mask;
     if (errorType < 25)
       return 0;
@@ -206,7 +208,7 @@ namespace pixelgpudetails {
         errorFound = true;
         uint32_t index = fedId * MAX_LINK * MAX_ROC + (link - 1) * MAX_ROC + 1;
         if (index > 1 && index <= cablingMap.size()) {
-            auto cmap = cablingMap[index];
+          auto cmap = cablingMap[index];
           if (!(link == cmap.link() && 1 == cmap.roc()))
             errorFound = false;
         }
@@ -623,9 +625,7 @@ namespace pixelgpudetails {
                                                                         digis_d.deviceView().adc(),
                                                                         gains,
                                                                         wordCounter,
-                                                                        clusters_d.moduleStart(),
-                                                                        clusters_d.clusInModule(),
-                                                                        clusters_d.clusModuleStart());
+                                                                        clusters_d.view());
       cudaCheck(cudaGetLastError());
 #ifdef GPU_DEBUG
       cudaDeviceSynchronize();
@@ -637,13 +637,15 @@ namespace pixelgpudetails {
                 << " threads\n";
 #endif
 
-      countModules<<<blocks, threadsPerBlock, 0, stream>>>(
-          digis_d.c_deviceView().moduleInd(), clusters_d.moduleStart(), digis_d.deviceView().clus(), wordCounter);
+      countModules<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.c_deviceView().moduleInd(),
+                                                           clusters_d.view().moduleStart(),
+                                                           digis_d.deviceView().clus(),
+                                                           wordCounter);
       cudaCheck(cudaGetLastError());
 
       // read the number of modules into a data member, used by getProduct())
       cudaCheck(cudaMemcpyAsync(
-          &(nModules_Clusters_h[0]), clusters_d.moduleStart(), sizeof(uint32_t), cudaMemcpyDefault, stream));
+          &(nModules_Clusters_h[0]), clusters_d.view().moduleStart(), sizeof(uint32_t), cudaMemcpyDefault, stream));
 
       threadsPerBlock = 256;
       blocks = MaxNumModules;
@@ -653,9 +655,9 @@ namespace pixelgpudetails {
       findClus<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.c_deviceView().moduleInd(),
                                                        digis_d.c_deviceView().xx(),
                                                        digis_d.c_deviceView().yy(),
-                                                       clusters_d.c_moduleStart(),
-                                                       clusters_d.clusInModule(),
-                                                       clusters_d.moduleId(),
+                                                       clusters_d.view().moduleStart(),
+                                                       clusters_d.view().clusInModule(),
+                                                       clusters_d.view().moduleId(),
                                                        digis_d.deviceView().clus(),
                                                        wordCounter);
       cudaCheck(cudaGetLastError());
@@ -667,9 +669,9 @@ namespace pixelgpudetails {
       // apply charge cut
       clusterChargeCut<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.deviceView().moduleInd(),
                                                                digis_d.c_deviceView().adc(),
-                                                               clusters_d.c_moduleStart(),
-                                                               clusters_d.clusInModule(),
-                                                               clusters_d.c_moduleId(),
+                                                               clusters_d.view().moduleStart(),
+                                                               clusters_d.view().clusInModule(),
+                                                               clusters_d.view().moduleId(),
                                                                digis_d.deviceView().clus(),
                                                                wordCounter);
       cudaCheck(cudaGetLastError());
@@ -680,11 +682,12 @@ namespace pixelgpudetails {
       // synchronization/ExternalWork
 
       // MUST be ONE block
-      fillHitsModuleStart<<<1, 1024, 0, stream>>>(clusters_d.c_clusInModule(), clusters_d.clusModuleStart());
+      fillHitsModuleStart<<<1, 1024, 0, stream>>>(clusters_d.view().clusInModule(),
+                                                  clusters_d.view().clusModuleStart());
 
       // last element holds the number of all clusters
       cudaCheck(cudaMemcpyAsync(&(nModules_Clusters_h[1]),
-                                clusters_d.clusModuleStart() + gpuClustering::MaxNumModules,
+                                clusters_d.view().clusModuleStart() + gpuClustering::MaxNumModules,
                                 sizeof(uint32_t),
                                 cudaMemcpyDefault,
                                 stream));
