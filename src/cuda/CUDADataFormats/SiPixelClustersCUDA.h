@@ -5,7 +5,21 @@
 #include "CUDACore/host_unique_ptr.h"
 #include "CUDACore/cudaCompat.h"
 
+#include "DataFormats/SoACommon.h"
+#include "DataFormats/SoALayout.h"
+#include "DataFormats/SoAView.h"
+
+#include "CUDADataFormats/PortableDeviceCollection.h"
+
 #include <cuda_runtime.h>
+
+GENERATE_SOA_LAYOUT(SiPixelClustersCUDALayout,
+                    SOA_COLUMN(uint32_t, moduleStart),
+                    SOA_COLUMN(uint32_t, clusInModule),
+                    SOA_COLUMN(uint32_t, moduleId),
+                    SOA_COLUMN(uint32_t, clusModuleStart))
+
+using PDC_SiPixelClustersCUDA = PortableDeviceCollection<SiPixelClustersCUDALayout<>>;
 
 class SiPixelClustersCUDA {
 public:
@@ -22,50 +36,20 @@ public:
 
   uint32_t nClusters() const { return nClusters_h; }
 
-  uint32_t *moduleStart() { return moduleStart_d.get(); }
-  uint32_t *clusInModule() { return clusInModule_d.get(); }
-  uint32_t *moduleId() { return moduleId_d.get(); }
-  uint32_t *clusModuleStart() { return clusModuleStart_d.get(); }
+  PDC_SiPixelClustersCUDA::ConstView const view() const { return this->pdc.view(); }
+  PDC_SiPixelClustersCUDA::View view() { return this->pdc.view(); }
 
-  uint32_t const *moduleStart() const { return moduleStart_d.get(); }
-  uint32_t const *clusInModule() const { return clusInModule_d.get(); }
-  uint32_t const *moduleId() const { return moduleId_d.get(); }
-  uint32_t const *clusModuleStart() const { return clusModuleStart_d.get(); }
-
-  uint32_t const *c_moduleStart() const { return moduleStart_d.get(); }
-  uint32_t const *c_clusInModule() const { return clusInModule_d.get(); }
-  uint32_t const *c_moduleId() const { return moduleId_d.get(); }
-  uint32_t const *c_clusModuleStart() const { return clusModuleStart_d.get(); }
-
-  class DeviceConstView {
-  public:
-    // DeviceConstView() = default;
-
-    __device__ __forceinline__ uint32_t moduleStart(int i) const { return __ldg(moduleStart_ + i); }
-    __device__ __forceinline__ uint32_t clusInModule(int i) const { return __ldg(clusInModule_ + i); }
-    __device__ __forceinline__ uint32_t moduleId(int i) const { return __ldg(moduleId_ + i); }
-    __device__ __forceinline__ uint32_t clusModuleStart(int i) const { return __ldg(clusModuleStart_ + i); }
-
-    friend SiPixelClustersCUDA;
-
-    //   private:
-    uint32_t const *moduleStart_;
-    uint32_t const *clusInModule_;
-    uint32_t const *moduleId_;
-    uint32_t const *clusModuleStart_;
-  };
-
-  DeviceConstView *view() const { return view_d.get(); }
+//  std::byte const *moduleStart() const {
+//    return this->pdc.buffer().get();
+//  }
+//
+//  std::byte const *clusInModule() const {
+//    auto offset = sizeof(uint32_t) * this->nClusters();
+//    return this->pdc.buffer().get() + offset;
+//  }
 
 private:
-  cms::cuda::device::unique_ptr<uint32_t[]> moduleStart_d;   // index of the first pixel of each module
-  cms::cuda::device::unique_ptr<uint32_t[]> clusInModule_d;  // number of clusters found in each module
-  cms::cuda::device::unique_ptr<uint32_t[]> moduleId_d;      // module id of each module
-
-  // originally from rechits
-  cms::cuda::device::unique_ptr<uint32_t[]> clusModuleStart_d;  // index of the first cluster of each module
-
-  cms::cuda::device::unique_ptr<DeviceConstView> view_d;  // "me" pointer
+  PDC_SiPixelClustersCUDA pdc;
 
   uint32_t nClusters_h;
 };

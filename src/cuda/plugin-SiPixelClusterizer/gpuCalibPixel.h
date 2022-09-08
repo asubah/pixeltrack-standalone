@@ -26,17 +26,16 @@ namespace gpuCalibPixel {
                              uint16_t* adc,
                              SiPixelGainForHLTonGPU const* __restrict__ ped,
                              int numElements,
-                             uint32_t* __restrict__ moduleStart,        // just to zero first
-                             uint32_t* __restrict__ nClustersInModule,  // just to zero them
-                             uint32_t* __restrict__ clusModuleStart     // just to zero first
-  ) {
+                             PDC_SiPixelClustersCUDA::View clusters) {
     int first = blockDim.x * blockIdx.x + threadIdx.x;
 
     // zero for next kernels...
-    if (0 == first)
-      clusModuleStart[0] = moduleStart[0] = 0;
+    if (0 == first) {
+      clusters[0].clusModuleStart() = 0;
+      clusters[0].moduleStart() = 0;
+    }
     for (int i = first; i < gpuClustering::MaxNumModules; i += gridDim.x * blockDim.x) {
-      nClustersInModule[i] = 0;
+      clusters[i].clusInModule() = 0;
     }
 
     for (int i = first; i < numElements; i += gridDim.x * blockDim.x) {
