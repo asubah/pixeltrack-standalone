@@ -4,6 +4,7 @@
 #include "CUDADataFormats/SiPixelDigiErrorsCUDA.h"
 #include "CondFormats/SiPixelGainCalibrationForHLTGPU.h"
 #include "CondFormats/SiPixelFedCablingMapGPUWrapper.h"
+#include "CondFormats/SiPixelFedCablingMapGPU.h"
 #include "CondFormats/SiPixelFedIds.h"
 #include "DataFormats/PixelErrors.h"
 #include "DataFormats/FEDNumbering.h"
@@ -74,7 +75,7 @@ void SiPixelRawToClusterCUDA::acquire(const edm::Event& iEvent,
                              ") differs the one from SiPixelFedCablingMapGPUWrapper. Please fix your configuration.");
   }
   // get the GPU product already here so that the async transfer can begin
-  const auto* gpuMap = hgpuMap.getGPUProductAsync(ctx.stream());
+  PDC_SiPixelFedCablingMap::ConstView gpuMap = hgpuMap.getGPUProductAsync(ctx.stream());
   const unsigned char* gpuModulesToUnpack = hgpuMap.getModToUnpAllAsync(ctx.stream());
 
   auto const& hgains = iSetup.get<SiPixelGainCalibrationForHLTGPU>();

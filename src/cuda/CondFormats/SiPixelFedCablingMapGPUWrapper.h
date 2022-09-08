@@ -12,14 +12,13 @@
 
 class SiPixelFedCablingMapGPUWrapper {
 public:
-  explicit SiPixelFedCablingMapGPUWrapper(SiPixelFedCablingMapGPU const &cablingMap,
-                                          std::vector<unsigned char> modToUnp);
+  explicit SiPixelFedCablingMapGPUWrapper(PHC_SiPixelFedCablingMap& cablingMap, std::vector<unsigned char> modToUnp);
   ~SiPixelFedCablingMapGPUWrapper();
 
   bool hasQuality() const { return hasQuality_; }
 
   // returns pointer to GPU memory
-  const SiPixelFedCablingMapGPU *getGPUProductAsync(cudaStream_t cudaStream) const;
+  const PDC_SiPixelFedCablingMap::ConstView getGPUProductAsync(cudaStream_t cudaStream) const;
 
   // returns pointer to GPU memory
   const unsigned char *getModToUnpAllAsync(cudaStream_t cudaStream) const;
@@ -28,13 +27,9 @@ private:
   std::vector<unsigned char, cms::cuda::HostAllocator<unsigned char>> modToUnpDefault;
   bool hasQuality_;
 
-  SiPixelFedCablingMapGPU *cablingMapHost = nullptr;  // pointer to struct in CPU
-
-  struct GPUData {
-    ~GPUData();
-    SiPixelFedCablingMapGPU *cablingMapDevice = nullptr;  // pointer to struct in GPU
-  };
-  cms::cuda::ESProduct<GPUData> gpuData_;
+  PHC_SiPixelFedCablingMap cablingMapHost;
+  PDC_SiPixelFedCablingMap cablingMapDevice;
+  cms::cuda::ESProduct<PDC_SiPixelFedCablingMap> gpuData_;
 
   struct ModulesToUnpack {
     ~ModulesToUnpack();
