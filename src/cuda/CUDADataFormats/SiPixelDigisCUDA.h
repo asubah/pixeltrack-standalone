@@ -19,20 +19,18 @@ public:
   SiPixelDigisCUDA &operator=(SiPixelDigisCUDA &&) = default;
 
   void setNModulesDigis(uint32_t nModules, uint32_t nDigis) {
-    hc->nModules() = nModules;
-    hc->nDigis() = nDigis;
+    phc->nModules() = nModules;
+    phc->nDigis() = nDigis;
   }
 
-  uint32_t nModules() const { return hc->nModules(); }
-  uint32_t nDigis() const { return hc->nDigis(); }
+  uint32_t nModules() const { return phc->nModules(); }
+  uint32_t nDigis() const { return phc->nDigis(); }
 
-  PDC_SiPixelDigisDeviceLayout::View deviceView() { return *dc; };
-  PDC_SiPixelDigisDeviceLayout::ConstView deviceView() const { return *dc; };
-  PDC_SiPixelDigisDeviceLayout::ConstView c_deviceView() const { return *dc; };
+  PDC_SiPixelDigis::View view() { return this->pdc.view(); };
+  PDC_SiPixelDigis::ConstView const& view() const { return this->pdc.view(); };
 
-  PHC_SiPixelDigisHostLayout::View hostView() { return *hc; };
-  PHC_SiPixelDigisHostLayout::ConstView hostView() const { return *hc; };
-  PHC_SiPixelDigisHostLayout::ConstView c_hostView() const { return *hc; };
+//  PHC_SiPixelDigis::View hostView() { return phc.view(); };
+//  PHC_SiPixelDigis::ConstView& const hostView() const { return phc.view(); };
 
   cms::cuda::host::unique_ptr<uint16_t[]> adcToHostAsync(cudaStream_t stream) const;
   cms::cuda::host::unique_ptr<int32_t[]> clusToHostAsync(cudaStream_t stream) const;
@@ -40,8 +38,8 @@ public:
   cms::cuda::host::unique_ptr<uint32_t[]> rawIdArrToHostAsync(cudaStream_t stream) const;
 
 private:
-  PDC_SiPixelDigisDeviceLayout dc;
-  PHC_SiPixelDigisHostLayout hc;
+  PDC_SiPixelDigis pdc;
+  PHC_SiPixelDigis phc;
 };
 
 #endif

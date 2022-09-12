@@ -589,12 +589,12 @@ namespace pixelgpudetails {
                                                                wordCounter,
                                                                word_d.get(),
                                                                fedId_d.get(),
-                                                               digis_d.deviceView().xx(),
-                                                               digis_d.deviceView().yy(),
-                                                               digis_d.deviceView().adc(),
-                                                               digis_d.deviceView().pdigi(),
-                                                               digis_d.deviceView().rawIdArr(),
-                                                               digis_d.deviceView().moduleInd(),
+                                                               digis_d.view().xx(),
+                                                               digis_d.view().yy(),
+                                                               digis_d.view().adc(),
+                                                               digis_d.view().pdigi(),
+                                                               digis_d.view().rawIdArr(),
+                                                               digis_d.view().moduleInd(),
                                                                digiErrors_d.error(),
                                                                useQualityInfo,
                                                                includeErrors,
@@ -619,10 +619,10 @@ namespace pixelgpudetails {
           (std::max(int(wordCounter), int(gpuClustering::MaxNumModules)) + threadsPerBlock - 1) / threadsPerBlock;
 
       gpuCalibPixel::calibDigis<<<blocks, threadsPerBlock, 0, stream>>>(isRun2,
-                                                                        digis_d.deviceView().moduleInd(),
-                                                                        digis_d.c_deviceView().xx(),
-                                                                        digis_d.c_deviceView().yy(),
-                                                                        digis_d.deviceView().adc(),
+                                                                        digis_d.view().moduleInd(),
+                                                                        digis_d.view().xx(),
+                                                                        digis_d.view().yy(),
+                                                                        digis_d.view().adc(),
                                                                         gains,
                                                                         wordCounter,
                                                                         clusters_d.view());
@@ -637,9 +637,9 @@ namespace pixelgpudetails {
                 << " threads\n";
 #endif
 
-      countModules<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.c_deviceView().moduleInd(),
+      countModules<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.view().moduleInd(),
                                                            clusters_d.view().moduleStart(),
-                                                           digis_d.deviceView().clus(),
+                                                           digis_d.view().clus(),
                                                            wordCounter);
       cudaCheck(cudaGetLastError());
 
@@ -652,13 +652,13 @@ namespace pixelgpudetails {
 #ifdef GPU_DEBUG
       std::cout << "CUDA findClus kernel launch with " << blocks << " blocks of " << threadsPerBlock << " threads\n";
 #endif
-      findClus<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.c_deviceView().moduleInd(),
-                                                       digis_d.c_deviceView().xx(),
-                                                       digis_d.c_deviceView().yy(),
+      findClus<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.view().moduleInd(),
+                                                       digis_d.view().xx(),
+                                                       digis_d.view().yy(),
                                                        clusters_d.view().moduleStart(),
                                                        clusters_d.view().clusInModule(),
                                                        clusters_d.view().moduleId(),
-                                                       digis_d.deviceView().clus(),
+                                                       digis_d.view().clus(),
                                                        wordCounter);
       cudaCheck(cudaGetLastError());
 #ifdef GPU_DEBUG
@@ -667,12 +667,12 @@ namespace pixelgpudetails {
 #endif
 
       // apply charge cut
-      clusterChargeCut<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.deviceView().moduleInd(),
-                                                               digis_d.c_deviceView().adc(),
+      clusterChargeCut<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.view().moduleInd(),
+                                                               digis_d.view().adc(),
                                                                clusters_d.view().moduleStart(),
                                                                clusters_d.view().clusInModule(),
                                                                clusters_d.view().moduleId(),
-                                                               digis_d.deviceView().clus(),
+                                                               digis_d.view().clus(),
                                                                wordCounter);
       cudaCheck(cudaGetLastError());
 

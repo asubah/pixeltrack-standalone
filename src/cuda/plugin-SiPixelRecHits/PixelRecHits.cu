@@ -49,7 +49,7 @@ namespace pixelgpudetails {
 #endif
     if (blocks)  // protect from empty events
       gpuPixelRecHits::getHits<<<blocks, threadsPerBlock, 0, stream>>>(
-          cpeParams, bs_d.data(), digis_d.deviceView(), digis_d.hostView().nDigis(), clusters_d.view(), hits_d.view());
+          cpeParams, bs_d.data(), digis_d.view(), digis_d.nDigis(), clusters_d.view(), hits_d.view());
     cudaCheck(cudaGetLastError());
 #ifdef GPU_DEBUG
     cudaDeviceSynchronize();

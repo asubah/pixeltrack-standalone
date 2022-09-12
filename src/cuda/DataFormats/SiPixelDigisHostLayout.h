@@ -13,6 +13,6 @@ GENERATE_SOA_LAYOUT(SiPixelDigisHostLayout,
                       SOA_SCALAR(uint32_t, nModules),
                       SOA_SCALAR(uint32_t, nDigis))
 
-using PHC_SiPixelDigisHostLayout = PortableHostCollection<SiPixelDigisHostLayout<>>;
+using PHC_SiPixelDigis = PortableHostCollection<SiPixelDigisHostLayout<>>;
 
 #endif  // DataFormats_SiPixelDigi_interface_SiPixelDigisHosHosttLayout_h
