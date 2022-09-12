@@ -14,6 +14,6 @@ GENERATE_SOA_LAYOUT(SiPixelDigisDeviceLayout,
                     SOA_COLUMN(uint32_t, pdigi),
                     SOA_COLUMN(uint32_t, rawIdArr))
 
-using PDC_SiPixelDigisDeviceLayout = PortableDeviceCollection<SiPixelDigisDeviceLayout<>>;
+using PDC_SiPixelDigis = PortableDeviceCollection<SiPixelDigisDeviceLayout<>>;
 
 #endif  // DataFormats_SiPixelDigi_interface_SiPixelDigisDeviceLayout_h
