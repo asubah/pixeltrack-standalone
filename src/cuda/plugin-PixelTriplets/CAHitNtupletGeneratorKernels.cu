@@ -1,4 +1,5 @@
 #include "CAHitNtupletGeneratorKernelsImpl.h"
+#include "CUDACore/ExecutionConfiguration.h"
 
 template <>
 void CAHitNtupletGeneratorKernelsGPU::fillHitDetIndices(HitsView const *hv, TkSoA *tracks_d, cudaStream_t cudaStream) {
@@ -33,7 +34,8 @@ void CAHitNtupletGeneratorKernelsGPU::launchKernels(HitsOnCPU const &hh, TkSoA *
   // applying conbinatoric cleaning such as fishbone at this stage is too expensive
   //
 
-  auto nthTot = 64;
+  cms::cuda::ExecutionConfiguration exec;
+  auto nthTot = exec.configFromFile("kernel_connect");
   auto stride = 4;
   auto blockSize = nthTot / stride;
   auto numberOfBlocks = (3 * m_params.maxNumberOfDoublets_ / 4 + blockSize - 1) / blockSize;

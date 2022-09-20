@@ -26,6 +26,7 @@
 #include "CUDACore/cudaCheck.h"
 #include "CUDACore/device_unique_ptr.h"
 #include "CUDACore/host_unique_ptr.h"
+#include "CUDACore/ExecutionConfiguration.h"
 #include "CondFormats/SiPixelFedCablingMapGPU.h"
 
 // local includes
@@ -547,7 +548,8 @@ namespace pixelgpudetails {
 
     if (wordCounter)  // protect in case of empty event....
     {
-      const int threadsPerBlock = 512;
+      cms::cuda::ExecutionConfiguration exec;
+      int threadsPerBlock = exec.configFromFile("RawToDigi_kernel");
       const int blocks = (wordCounter + threadsPerBlock - 1) / threadsPerBlock;  // fill it all
 
       assert(0 == wordCounter % 2);
@@ -625,7 +627,9 @@ namespace pixelgpudetails {
       cudaCheck(cudaMemcpyAsync(
           &(nModules_Clusters_h[0]), clusters_d.moduleStart(), sizeof(uint32_t), cudaMemcpyDefault, stream));
 
-      threadsPerBlock = 256;
+      cms::cuda::ExecutionConfiguration exec;
+
+      threadsPerBlock = exec.configFromFile("findClus");
       blocks = MaxNumModules;
 #ifdef GPU_DEBUG
       std::cout << "CUDA findClus kernel launch with " << blocks << " blocks of " << threadsPerBlock << " threads\n";
@@ -645,6 +649,7 @@ namespace pixelgpudetails {
 #endif
 
       // apply charge cut
+      threadsPerBlock = exec.configFromFile("clusterChargeCut");
       clusterChargeCut<<<blocks, threadsPerBlock, 0, stream>>>(digis_d.moduleInd(),
                                                                digis_d.c_adc(),
                                                                clusters_d.c_moduleStart(),
