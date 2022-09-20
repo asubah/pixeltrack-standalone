@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
     std::cout << "Failed to initialize the CUDA runtime";
     return EXIT_FAILURE;
   }
-  std::cout << "Found " << numberOfDevices << " devices" << std::endl;
+  // std::cout << "Found " << numberOfDevices << " devices" << std::endl;
 
 #if CUDA_VERSION >= 11020
   // Initialize the CUDA memory pool
@@ -148,13 +148,13 @@ int main(int argc, char** argv) {
   edm::EventProcessor processor(
       maxEvents, runForMinutes, numberOfStreams, std::move(edmodules), std::move(esmodules), datadir, validation);
 
-  if (runForMinutes < 0) {
-    std::cout << "Processing " << processor.maxEvents() << " events, of which " << numberOfStreams
-              << " concurrently, with " << numberOfThreads << " threads." << std::endl;
-  } else {
-    std::cout << "Processing for about " << runForMinutes << " minutes with " << numberOfStreams
-              << " concurrent events and " << numberOfThreads << " threads." << std::endl;
-  }
+//   if (runForMinutes < 0) {
+//     std::cout << "Processing " << processor.maxEvents() << " events, of which " << numberOfStreams
+//               << " concurrently, with " << numberOfThreads << " threads." << std::endl;
+//   } else {
+//     std::cout << "Processing for about " << runForMinutes << " minutes with " << numberOfStreams
+//               << " concurrent events and " << numberOfThreads << " threads." << std::endl;
+//   }
 
   // Initialize he TBB thread pool
   tbb::global_control tbb_max_threads{tbb::global_control::max_allowed_parallelism,
