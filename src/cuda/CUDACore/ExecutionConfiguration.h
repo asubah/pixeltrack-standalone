@@ -8,7 +8,7 @@ namespace cms {
 
     class ExecutionConfiguration {
     public:
-      const std::string CONFIG_PATH = "src/cuda/CUDACore/kernel_configs/";
+      const std::string CONFIG_PATH = "autotuning/kernel_configs/";
 
       ExecutionConfiguration(){};
 
@@ -27,6 +27,8 @@ namespace cms {
         {
           file >> blockSize;
           file.close();
+        } else {
+            std::cout << "Error in opening file " + filename + "\n";
         }
         // std::cout << "Filename = " << filename << " Blocksize = " << blockSize << "\n";
 
