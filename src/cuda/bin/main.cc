@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
     std::cout << "Failed to initialize the CUDA runtime";
     return EXIT_FAILURE;
   }
-  // std::cout << "Found " << numberOfDevices << " devices" << std::endl;
+  std::cout << "Found " << numberOfDevices << " devices" << std::endl;
 
 #if CUDA_VERSION >= 11020
   // Initialize the CUDA memory pool
