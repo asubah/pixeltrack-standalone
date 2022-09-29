@@ -134,7 +134,7 @@ int main() {
     cudaCheck(cudaMalloc(&d_pc, sizeof(int32_t)));
     cudaCheck(cudaMemset(d_pc, 0, sizeof(int32_t)));
 
-    nthreads = 1024;
+    nthreads = 256;
     nblocks = (num_items + nthreads - 1) / nthreads;
     std::cout << "launch multiBlockPrefixScan " << num_items << ' ' << nblocks << std::endl;
     multiBlockPrefixScan<<<nblocks, nthreads, 4 * nblocks>>>(d_in, d_out1, num_items, d_pc);

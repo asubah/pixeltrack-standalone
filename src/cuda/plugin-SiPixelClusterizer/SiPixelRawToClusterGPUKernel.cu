@@ -36,6 +36,7 @@
 #include "gpuClustering.h"
 
 namespace pixelgpudetails {
+    cms::cuda::ExecutionConfiguration exec;
 
   // number of words for all the FEDs
   constexpr uint32_t MAX_FED_WORDS = pixelgpudetails::MAX_FED * pixelgpudetails::MAX_WORD;
@@ -548,7 +549,6 @@ namespace pixelgpudetails {
 
     if (wordCounter)  // protect in case of empty event....
     {
-      cms::cuda::ExecutionConfiguration exec;
       int threadsPerBlock = exec.configFromFile("RawToDigi_kernel");
       const int blocks = (wordCounter + threadsPerBlock - 1) / threadsPerBlock;  // fill it all
 
@@ -594,7 +594,7 @@ namespace pixelgpudetails {
     {
       // clusterizer ...
       using namespace gpuClustering;
-      int threadsPerBlock = 256;
+      int threadsPerBlock = exec.configFromFile("calibDigis");// 256;
       int blocks =
           (std::max(int(wordCounter), int(gpuClustering::MaxNumModules)) + threadsPerBlock - 1) / threadsPerBlock;
 
@@ -619,6 +619,9 @@ namespace pixelgpudetails {
                 << " threads\n";
 #endif
 
+      threadsPerBlock = exec.configFromFile("countModules");// 256;
+      blocks =
+          (std::max(int(wordCounter), int(gpuClustering::MaxNumModules)) + threadsPerBlock - 1) / threadsPerBlock;
       countModules<<<blocks, threadsPerBlock, 0, stream>>>(
           digis_d.c_moduleInd(), clusters_d.moduleStart(), digis_d.clus(), wordCounter);
       cudaCheck(cudaGetLastError());
@@ -626,8 +629,6 @@ namespace pixelgpudetails {
       // read the number of modules into a data member, used by getProduct())
       cudaCheck(cudaMemcpyAsync(
           &(nModules_Clusters_h[0]), clusters_d.moduleStart(), sizeof(uint32_t), cudaMemcpyDefault, stream));
-
-      cms::cuda::ExecutionConfiguration exec;
 
       threadsPerBlock = exec.configFromFile("findClus");
       blocks = MaxNumModules;

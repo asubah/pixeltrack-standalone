@@ -8,7 +8,6 @@
 // CMSSW headers
 #include "CUDACore/cudaCheck.h"
 #include "CUDACore/device_unique_ptr.h"
-#include "CUDACore/ExecutionConfiguration.h"
 #include "plugin-SiPixelClusterizer/SiPixelRawToClusterGPUKernel.h"  // !
 #include "plugin-SiPixelClusterizer/gpuClusteringConstants.h"        // !
 
@@ -33,7 +32,6 @@ namespace {
 }  // namespace
 
 namespace pixelgpudetails {
-
   TrackingRecHit2DCUDA PixelRecHitGPUKernel::makeHitsAsync(SiPixelDigisCUDA const& digis_d,
                                                            SiPixelClustersCUDA const& clusters_d,
                                                            BeamSpotCUDA const& bs_d,
